@@ -534,7 +534,7 @@ async function boot(){
   state.myVerif = store.myVerifSet();
   await refresh();
   render();
-  setInterval(()=>{ if(document.visibilityState==="visible" && (state.screen==="voluntario")) refresh(); }, 8000);
+  setInterval(()=>{ if(document.visibilityState==="visible" && state.screen==="voluntario" && !state.reportFor) refresh(); }, 8000);
 }
 
 /* ============================================================
