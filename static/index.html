@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Mapa de necesidades · Insumos</title>
+<style>
+  :root{
+    --ink:#15181c; --muted:#5b6570; --faint:#8a949e;
+    --surface:#ffffff; --subtle:#eef1f3; --line:#dde2e6;
+    --brand:#0c6e84; --brand-ink:#08506a;
+    --urgente:#d62828; --urgente-bg:#fdeceb;
+    --bajo:#e07b00;   --bajo-bg:#fdf3e6;
+    --suf:#1b8a5a;    --suf-bg:#e9f6ef;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(20,24,28,.06), 0 6px 20px rgba(20,24,28,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); background:var(--subtle);
+    -webkit-text-size-adjust:100%; line-height:1.4;
+    font-feature-settings:"tnum" 1; padding-bottom:env(safe-area-inset-bottom);
+  }
+  .wrap{max-width:560px; margin:0 auto; min-height:100vh; background:var(--subtle);
+    display:flex; flex-direction:column;}
+  /* top bar */
+  .bar{position:sticky; top:0; z-index:20; background:var(--surface);
+    border-bottom:1px solid var(--line); padding:12px 16px;
+    display:flex; align-items:center; gap:12px; padding-top:calc(12px + env(safe-area-inset-top));}
+  .bar .back{appearance:none; border:0; background:var(--subtle); color:var(--ink);
+    width:40px; height:40px; border-radius:10px; font-size:20px; cursor:pointer; flex:0 0 auto;}
+  .bar h1{font-size:16px; font-weight:800; letter-spacing:-.01em; margin:0;}
+  .bar .sub{font-size:12px; color:var(--muted); font-weight:500; margin-top:1px;}
+  main{padding:16px; flex:1;}
+  /* hero / landing */
+  .lede{padding:28px 4px 18px;}
+  .lede .kicker{font-size:12px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--brand-ink);}
+  .lede h2{font-size:27px; line-height:1.12; letter-spacing:-.02em; font-weight:800; margin:8px 0 8px;}
+  .lede p{color:var(--muted); margin:0; font-size:15px;}
+  .choices{display:grid; gap:14px; margin-top:8px;}
+  .choice{appearance:none; text-align:left; cursor:pointer; width:100%;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    padding:20px; box-shadow:var(--shadow); display:flex; gap:16px; align-items:center;}
+  .choice:active{transform:translateY(1px)}
+  .choice .ic{width:46px; height:46px; border-radius:12px; flex:0 0 auto;
+    display:grid; place-items:center; color:#fff; font-size:22px; font-weight:800;}
+  .choice .t{font-size:18px; font-weight:800; letter-spacing:-.01em;}
+  .choice .d{font-size:13.5px; color:var(--muted); margin-top:2px;}
+  .choice .chev{margin-left:auto; color:var(--faint); font-size:22px;}
+  /* summary semáforo */
+  .semaforo{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px;}
+  .stat{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 10px; text-align:center;}
+  .stat b{display:block; font-size:26px; font-weight:800; line-height:1; letter-spacing:-.02em;}
+  .stat span{display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-top:6px; color:var(--muted);}
+  .stat.u b{color:var(--urgente)} .stat.b b{color:var(--bajo)} .stat.s b{color:var(--suf)}
+  /* filters */
+  .filters{display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; margin-bottom:12px; -webkit-overflow-scrolling:touch;}
+  .filters::-webkit-scrollbar{display:none}
+  .chip{flex:0 0 auto; appearance:none; cursor:pointer; border:1px solid var(--line);
+    background:var(--surface); color:var(--ink); border-radius:999px; padding:9px 14px;
+    font-size:13px; font-weight:700;}
+  .chip[aria-pressed="true"]{background:var(--ink); color:#fff; border-color:var(--ink);}
+  /* facility card (volunteer) */
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); margin-bottom:12px; overflow:hidden; display:flex;}
+  .rail{flex:0 0 7px;}
+  .rail.urgente{background:var(--urgente)} .rail.bajo{background:var(--bajo)} .rail.suficiente{background:var(--suf)}
+  .card .body{padding:14px 15px; flex:1; min-width:0;}
+  .card .top{display:flex; align-items:flex-start; gap:10px;}
+  .card .name{font-size:16.5px; font-weight:800; letter-spacing:-.01em; word-break:break-word;}
+  .card .meta{font-size:12.5px; color:var(--muted); margin-top:1px;}
+  .pill{flex:0 0 auto; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+    padding:5px 9px; border-radius:999px; white-space:nowrap;}
+  .pill.urgente{background:var(--urgente-bg); color:var(--urgente)}
+  .pill.bajo{background:var(--bajo-bg); color:var(--bajo)}
+  .pill.suficiente{background:var(--suf-bg); color:var(--suf)}
+  .needs{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;}
+  .need{font-size:12px; font-weight:700; background:var(--subtle); color:var(--ink);
+    border:1px solid var(--line); border-radius:8px; padding:5px 9px;}
+  .note{font-size:13.5px; color:var(--ink); margin-top:10px; background:var(--subtle);
+    border-radius:10px; padding:9px 11px; white-space:pre-wrap; word-break:break-word;}
+  .card .foot{display:flex; align-items:center; gap:10px; margin-top:11px; font-size:12.5px; color:var(--muted);}
+  .card .foot a{color:var(--brand-ink); font-weight:700; text-decoration:none;}
+  .cardlink{color:var(--brand-ink); font-weight:700; text-decoration:none;}
+  /* empty */
+  .empty{text-align:center; padding:46px 20px; color:var(--muted);}
+  .empty .big{font-size:42px; line-height:1;}
+  .empty h3{color:var(--ink); margin:14px 0 6px; font-size:18px;}
+  .empty p{margin:0 auto; max-width:36ch; font-size:14px;}
+  /* form */
+  .field{margin-bottom:16px;}
+  .field > label{display:block; font-size:13px; font-weight:800; margin-bottom:7px; letter-spacing:-.01em;}
+  .field .hint{font-weight:500; color:var(--faint); font-size:12px;}
+  input[type=text], textarea{width:100%; font:inherit; color:var(--ink); background:var(--surface);
+    border:1px solid var(--line); border-radius:11px; padding:13px 13px; font-size:16px;}
+  textarea{min-height:78px; resize:vertical}
+  input:focus, textarea:focus{outline:2px solid var(--brand); outline-offset:1px; border-color:var(--brand);}
+  .seg{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+  .seg button{appearance:none; cursor:pointer; border:1.5px solid var(--line); background:var(--surface);
+    color:var(--ink); border-radius:11px; padding:13px; font-size:15px; font-weight:700;}
+  .seg button[aria-pressed="true"]{border-color:var(--brand); background:var(--brand); color:#fff;}
+  /* big status buttons */
+  .status3{display:grid; gap:10px;}
+  .sbtn{appearance:none; cursor:pointer; text-align:left; width:100%; border-radius:13px; padding:16px 16px;
+    border:2px solid var(--line); background:var(--surface); display:flex; align-items:center; gap:14px;}
+  .sbtn .dot{width:18px; height:18px; border-radius:50%; flex:0 0 auto;}
+  .sbtn .l{font-size:16.5px; font-weight:800;}
+  .sbtn .l small{display:block; font-size:12.5px; font-weight:600; color:var(--muted);}
+  .sbtn .mark{margin-left:auto; font-size:20px; opacity:0;}
+  .sbtn.suficiente .dot{background:var(--suf)} .sbtn.bajo .dot{background:var(--bajo)} .sbtn.urgente .dot{background:var(--urgente)}
+  .sbtn[aria-pressed="true"]{background:var(--subtle)}
+  .sbtn.suficiente[aria-pressed="true"]{border-color:var(--suf)}
+  .sbtn.bajo[aria-pressed="true"]{border-color:var(--bajo)}
+  .sbtn.urgente[aria-pressed="true"]{border-color:var(--urgente)}
+  .sbtn[aria-pressed="true"] .mark{opacity:1}
+  /* supply toggles */
+  .supplies{display:grid; grid-template-columns:1fr 1fr; gap:9px;}
+  .supply{appearance:none; cursor:pointer; border:1.5px solid var(--line); background:var(--surface);
+    color:var(--ink); border-radius:11px; padding:13px 12px; font-size:14px; font-weight:700; text-align:center;}
+  .supply[aria-pressed="true"]{border-color:var(--brand); background:var(--brand); color:#fff;}
+  /* primary action */
+  .cta{position:sticky; bottom:0; background:linear-gradient(180deg, rgba(238,241,243,0), var(--subtle) 26%);
+    padding:14px 16px calc(14px + env(safe-area-inset-bottom)); margin:8px -16px -16px;}
+  .btn{appearance:none; cursor:pointer; width:100%; border:0; border-radius:13px; padding:16px;
+    font-size:16.5px; font-weight:800; letter-spacing:-.01em; background:var(--brand); color:#fff;}
+  .btn:active{transform:translateY(1px)}
+  .btn[disabled]{opacity:.45; cursor:not-allowed}
+  .btn.ghost{background:var(--surface); color:var(--ink); border:1px solid var(--line);}
+  .row2{display:flex; gap:10px; margin-top:10px;}
+  .row2 .btn{flex:1}
+  /* toast */
+  .toast{position:fixed; left:50%; transform:translateX(-50%); bottom:24px; z-index:60;
+    background:var(--ink); color:#fff; padding:13px 18px; border-radius:12px; font-size:14px; font-weight:700;
+    box-shadow:var(--shadow); opacity:0; transition:opacity .2s, transform .2s; pointer-events:none; max-width:90%;}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-4px);}
+  .footnote{font-size:11.5px; color:var(--faint); text-align:center; padding:18px 12px 8px; line-height:1.5;}
+  .mine{font-size:12px; font-weight:800; color:var(--brand-ink); background:var(--surface);
+    border:1px dashed var(--brand); border-radius:8px; padding:3px 8px; display:inline-block; margin-bottom:8px;}
+  .updnote{font-size:12px; color:var(--muted); text-align:right; margin:-6px 0 14px;}
+  /* identidad de centro existente */
+  .idcard{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:15px; margin-bottom:18px;}
+  .idrow{display:flex; align-items:flex-start; gap:10px;}
+  .idname{font-size:18px; font-weight:800; letter-spacing:-.01em; word-break:break-word;}
+  .idmeta{font-size:13px; color:var(--muted); margin-top:2px;}
+  .codebox{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
+    background:var(--subtle); border-radius:11px; padding:11px 13px; margin:13px 0 4px;}
+  .codelabel{font-size:11.5px; font-weight:700; color:var(--muted); max-width:60%;}
+  .codeval{font-size:21px; font-weight:800; letter-spacing:.16em; color:var(--brand-ink); font-variant-numeric:tabular-nums;}
+  .linkbtn{appearance:none; border:0; background:none; color:var(--brand-ink); font:inherit;
+    font-weight:700; font-size:13.5px; cursor:pointer; padding:8px 0 2px; text-decoration:underline;}
+  .dupwarn{background:var(--bajo-bg); border:1px solid #f3d29a; border-radius:12px; padding:13px; margin-bottom:16px; color:#7a4a00;}
+  .codebig{font-size:40px; font-weight:800; letter-spacing:.22em; text-align:center; color:var(--brand-ink);
+    background:var(--subtle); border-radius:14px; padding:20px 12px; margin:18px 16px 0; font-variant-numeric:tabular-nums;}
+  /* frescura del dato */
+  .fresh{color:var(--suf)} .agok{color:var(--muted)} .stale{color:var(--bajo); font-weight:700}
+  /* verificación por voluntarios */
+  .vrow{display:flex; align-items:center; gap:9px; margin-top:11px; padding-top:11px; border-top:1px solid var(--line); flex-wrap:wrap;}
+  .vbadge{display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:800;
+    background:var(--suf-bg); color:var(--suf); border-radius:999px; padding:5px 10px;}
+  .vbadge.none{background:var(--subtle); color:var(--muted);}
+  .vbtn{appearance:none; cursor:pointer; border:1px solid var(--line); background:var(--surface); color:var(--ink);
+    border-radius:999px; padding:7px 13px; font-size:12.5px; font-weight:700; margin-left:auto;}
+  .vbtn.on{background:var(--suf); color:#fff; border-color:var(--suf);}
+  .lock{display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; color:var(--muted);}
+  /* gate de contraseña */
+  .gatenote{font-size:12.5px; color:var(--muted); margin:-4px 2px 16px; line-height:1.5;}
+  /* ubicación + mapa */
+  .locrow{display:flex; align-items:center; gap:10px; background:var(--subtle); border-radius:11px; padding:11px 13px; margin:13px 0 4px; flex-wrap:wrap;}
+  .locrow .lt{font-size:12.5px; font-weight:700; color:var(--muted); min-width:0; word-break:break-word;}
+  .smallbtn{appearance:none; cursor:pointer; border:1px solid var(--line); background:var(--surface); color:var(--brand-ink);
+    border-radius:9px; padding:8px 12px; font-size:13px; font-weight:700; margin-left:auto; text-decoration:none; display:inline-block;}
+  .map{border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:8px; margin-bottom:6px; background:var(--surface);}
+  .map svg{width:100%; height:auto; display:block; border-radius:10px; background:#e7edf0;}
+  .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; font-weight:700; color:var(--muted); padding:4px 4px 12px;}
+  .legend i{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle;}
+  .toolrow{display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;}
+  .toolrow button{flex:1 1 auto; appearance:none; cursor:pointer; border:1px solid var(--line); background:var(--surface); color:var(--ink);
+    border-radius:10px; padding:10px 8px; font-size:13px; font-weight:700; white-space:nowrap;}
+  .toolrow button[aria-pressed="true"]{background:var(--ink); color:#fff; border-color:var(--ink);}
+  /* admin */
+  .adminrow{background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); padding:13px 14px; margin-bottom:10px;}
+  .adminrow .an{font-size:15.5px; font-weight:800; word-break:break-word;}
+  .adminrow .am{font-size:12.5px; color:var(--muted); margin-top:3px; line-height:1.5;}
+  .aacts{display:flex; gap:8px; margin-top:11px; flex-wrap:wrap;}
+  .aacts .smallbtn{margin-left:0;}
+  .danger{appearance:none; cursor:pointer; border:1px solid #f1b0ab; background:var(--urgente-bg); color:var(--urgente);
+    border-radius:9px; padding:8px 12px; font-size:13px; font-weight:800;}
+  .danger.solid{background:var(--urgente); color:#fff; border-color:var(--urgente);}
+  .adminlink{display:block; text-align:center; margin-top:6px; font-size:12px; font-weight:700; color:var(--faint); text-decoration:underline; cursor:pointer; background:none; border:0; width:100%;}
+  @media (prefers-reduced-motion: reduce){ *{transition:none !important} .choice:active,.btn:active{transform:none} }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   Coordinación de insumos — app de un solo archivo.
+   Funciona en la vista de artefactos de Claude (almacenamiento
+   compartido en vivo entre dispositivos) y también si la alojas
+   en tu propio servidor (usa almacenamiento local del navegador).
+   ============================================================ */
+
+/* ---------- Catálogo de insumos ---------- */
+const SUPPLIES = [
+  ["agua",        "Agua potable"],
+  ["alimentos",   "Alimentos"],
+  ["medicamentos","Medicamentos"],
+  ["curacion",    "Material de curación"],
+  ["abrigo",      "Mantas y abrigo"],
+  ["higiene",     "Higiene"],
+  ["energia",     "Energía / baterías"],
+  ["combustible", "Combustible"],
+];
+const SUPPLY_LABEL = Object.fromEntries(SUPPLIES);
+
+const STATUS = {
+  suficiente: {label:"Suficiente", desc:"No necesita reabastecimiento ahora", order:2},
+  bajo:       {label:"Bajo",       desc:"Le queda poco, conviene reabastecer", order:1},
+  urgente:    {label:"Urgente",    desc:"Necesita insumos lo antes posible",   order:0},
+};
+
+/* ---------- Capa de datos: API del backend ---------- */
+const API_BASE = "";   // mismo origen; cámbialo si el front se aloja aparte (p. ej. "https://api.tudominio.org")
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(_){ return null; } }
+function lsSet(k,v){ try{ if(v===null||v===undefined) localStorage.removeItem(k); else localStorage.setItem(k,v); }catch(_){} }
+function tokFor(id){ return lsGet("tok:"+id); }
+function setTok(id,t){ lsSet("tok:"+id, t||null); }
+function codeFor(id){ return lsGet("code:"+id); }
+function setCode(id,c){ lsSet("code:"+id, c||null); }
+
+async function api(path, opts){
+  opts = opts || {};
+  const headers = Object.assign({"Content-Type":"application/json"}, opts.headers||{});
+  let res;
+  try{ res = await fetch(API_BASE+"/api"+path, Object.assign({}, opts, {headers})); }
+  catch(netErr){ const e=new Error("sin_red"); e.offline=true; throw e; }
+  let data=null; try{ data=await res.json(); }catch(_){}
+  if(!res.ok){ const e=new Error((data&&data.error)||("HTTP "+res.status)); e.status=res.status; e.data=data; throw e; }
+  return data || {};
+}
+
+const store = {
+  async listCentros(){ const d=await api("/centros"); return d.centros||[]; },
+  async register(c){
+    const d=await api("/centros",{method:"POST", body:JSON.stringify(c)});
+    setTok(d.centro.id, d.token); setCode(d.centro.id, d.code); return d;   // {centro, code, token}
+  },
+  async update(c){
+    const t=tokFor(c.id);
+    return await api("/centros/"+c.id,{method:"PUT", headers:{Authorization:"Bearer "+t}, body:JSON.stringify(c)});
+  },
+  async login(code, password){
+    const d=await api("/centros/login",{method:"POST", body:JSON.stringify({code, password:password||""})});
+    setTok(d.centro.id, d.token); setCode(d.centro.id, code); return d;     // {centro, token}
+  },
+  async verify(id, uid){
+    return await api("/centros/"+id+"/verify",{method:"POST", body:JSON.stringify({uid})}); // {count, verified}
+  },
+  getMyId(){ return lsGet("mi-centro"); },
+  setMyId(id){ lsSet("mi-centro", id||null); },
+  getUid(){ let u=lsGet("mi-uid"); if(!u){ u=uid(); lsSet("mi-uid",u); } return u; },
+  myVerifSet(){ try{ return new Set(JSON.parse(lsGet("mi-verif")||"[]")); }catch(_){ return new Set(); } },
+  setMyVerif(set){ lsSet("mi-verif", JSON.stringify([...set])); },
+  // administración
+  async adminState(){ return await api("/admin/state"); },         // {configured, envManaged}
+  async adminSetup(password){ return (await api("/admin/setup",{method:"POST", body:JSON.stringify({password})})).token; },
+  async adminLogin(password){ return (await api("/admin/login",{method:"POST", body:JSON.stringify({password})})).token; },
+  async adminList(token){ return (await api("/admin/centros",{headers:{Authorization:"Bearer "+token}})).centros||[]; },
+  async adminDelete(token, id){ return await api("/admin/centros/"+id,{method:"DELETE", headers:{Authorization:"Bearer "+token}}); },
+};
+
+/* ---------- Estado de la app ---------- */
+let state = {
+  screen: "landing",     // landing | voluntario | elegir | centro | codigo | guardado | admin
+  centros: [],
+  uid: null,             // identificador anónimo de este dispositivo
+  myId: null,
+  myVerif: new Set(),    // ids de centros que este dispositivo ha verificado
+  loading: false,
+  loadError: "",
+  editing: null,         // borrador del centro en edición
+  editIdentity: false,   // mostrar campos de nombre/tipo/zona/contacto
+  dupMatch: null,        // posible duplicado detectado al registrar
+  codeInput: "",         // texto del código que se está ingresando
+  codePw: "",            // contraseña al iniciar sesión por código
+  codeNeedPw: false,     // el servidor pidió contraseña
+  codeError: "",
+  savedCode: null,       // {nombre, codigo, pw} a mostrar tras registrar
+  filterSupply: null,    // clave de insumo o null
+  filterTipo: null,      // "hospital" | "refugio" | null
+  myLoc: null,           // ubicación del voluntario (en memoria)
+  sortBy: "urgencia",    // "urgencia" | "cercania"
+  showMap: false,
+  locManual: false,      // mostrar entrada manual de coordenadas
+  adminToken: null,      // token de administrador (en memoria)
+  adminCfg: null,        // {configured, envManaged}
+  adminList: [],         // centros vistos en el panel
+  adminInput: "",
+  adminError: "",
+  adminDelId: null,      // centro pendiente de confirmar borrado
+  demo: false,
+};
+
+const DEMO = [
+  {id:"d1", nombre:"Hospital Central", tipo:"hospital", zona:"Centro, Maracaibo", estado:"urgente", lat:10.6545, lng:-71.6125,
+   necesidades:["medicamentos","curacion","agua"], nota:"Quirófano sin suero. Prioridad analgésicos.", contacto:"0414-1112233", actualizado:Date.now()-1000*60*22, demo:true},
+  {id:"d2", nombre:"Refugio Escuela Bolívar", tipo:"refugio", zona:"Sur, El Carmen", estado:"bajo", lat:10.6201, lng:-71.6388,
+   necesidades:["agua","alimentos","abrigo"], nota:"", contacto:"", actualizado:Date.now()-1000*60*60*3, demo:true},
+  {id:"d3", nombre:"Ambulatorio Norte", tipo:"hospital", zona:"Norte", estado:"suficiente", lat:10.7012, lng:-71.6050,
+   necesidades:[], nota:"Cubiertos por ahora, gracias.", contacto:"0426-9988776", actualizado:Date.now()-1000*60*48, demo:true},
+];
+
+/* ---------- Utilidades ---------- */
+const el = (tag, attrs={}, ...kids)=>{
+  const n = document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs)){
+    if(k==="class") n.className=v;
+    else if(k==="html") n.innerHTML=v;
+    else if(k.startsWith("on") && typeof v==="function") n.addEventListener(k.slice(2), v);
+    else if(v!==null && v!==undefined && v!==false) n.setAttribute(k, v===true?"":v);
+  }
+  for(const kid of kids.flat()){ if(kid==null||kid===false) continue;
+    n.appendChild(typeof kid==="string"?document.createTextNode(kid):kid); }
+  return n;
+};
+const esc = s => (s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function hace(ts){
+  const s = Math.floor((Date.now()-ts)/1000);
+  if(s<60) return "hace instantes";
+  const m=Math.floor(s/60); if(m<60) return `hace ${m} min`;
+  const h=Math.floor(m/60); if(h<24) return `hace ${h} h`;
+  const d=Math.floor(h/24); return `hace ${d} d`;
+}
+function toast(msg){
+  const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"), 2400);
+}
+function newId(){ return "c" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function uid(){ return "u" + Math.random().toString(36).slice(2,8); }
+// Código de acceso legible (sin caracteres ambiguos) para reabrir el centro desde otro teléfono
+function genCode(){ const A="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let s=""; for(let i=0;i<6;i++) s+=A[Math.floor(Math.random()*A.length)]; return s; }
+function norm(s){ return (s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim(); }
+function findCentro(id){ return state.centros.find(c=>c.id===id) || null; }
+function hasToken(id){ return !!tokFor(id); }
+// Frescura del dato para el voluntario
+function freshness(ts){
+  const min=(Date.now()-ts)/60000;
+  if(min<90)  return {txt:"Confirmado "+hace(ts), cls:"fresh"};
+  if(min<720) return {txt:"Confirmado "+hace(ts), cls:"agok"};
+  return {txt:"Sin actualizar "+hace(ts), cls:"stale"};
+}
+// Geolocalización del dispositivo
+function getLocation(){
+  return new Promise((res,rej)=>{
+    if(!navigator.geolocation){ rej(new Error("sin-geo")); return; }
+    navigator.geolocation.getCurrentPosition(
+      p=>res({lat:p.coords.latitude, lng:p.coords.longitude}),
+      e=>rej(e),
+      {enableHighAccuracy:true, timeout:10000, maximumAge:60000}
+    );
+  });
+}
+// Distancia en km entre dos puntos (haversine)
+function distKm(a,b){
+  const R=6371, t=Math.PI/180;
+  const dLa=(b.lat-a.lat)*t, dLo=(b.lng-a.lng)*t;
+  const s=Math.sin(dLa/2)**2 + Math.cos(a.lat*t)*Math.cos(b.lat*t)*Math.sin(dLo/2)**2;
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(s)));
+}
+function fmtDist(km){ return km<1 ? Math.round(km*1000)+" m" : km.toFixed(km<10?1:0)+" km"; }
+function mapsLink(c){ return "https://www.google.com/maps/search/?api=1&query="+c.lat+","+c.lng; }
+
+// Control para fijar la ubicación de un centro (GPS o manual)
+function locationCtrl(c){
+  const has = (typeof c.lat==="number" && typeof c.lng==="number");
+  const node = el("div",{});
+  node.appendChild(el("div",{class:"locrow"},
+    el("span",{class:"lt"}, has ? ("Ubicación: "+c.lat.toFixed(4)+", "+c.lng.toFixed(4)) : "Sin ubicación marcada"),
+    el("button",{class:"smallbtn", onclick:async(e)=>{
+      const btn=e.currentTarget; btn.disabled=true; btn.textContent="Buscando…";
+      try{ const loc=await getLocation(); c.lat=loc.lat; c.lng=loc.lng; render(); toast("Ubicación capturada"); }
+      catch(err){ state.locManual=true; render(); toast("GPS no disponible; ingrésala a mano"); }
+    }}, has ? "Actualizar con GPS" : "Usar mi ubicación (GPS)")
+  ));
+  node.appendChild(el("button",{class:"linkbtn", style:"font-size:12.5px;padding-top:6px", onclick:()=>{ state.locManual=!state.locManual; render(); }},
+    state.locManual ? "Ocultar coordenadas manuales" : "Ingresar coordenadas manualmente"));
+  if(state.locManual){
+    const la=el("input",{type:"text", value:has?String(c.lat):"", placeholder:"Latitud (p. ej. 10.6545)", inputmode:"decimal",
+      oninput:e=>{ const v=parseFloat(e.target.value); if(isNaN(v)) delete c.lat; else c.lat=v; }});
+    const lo=el("input",{type:"text", value:(typeof c.lng==="number")?String(c.lng):"", placeholder:"Longitud (p. ej. -71.6125)", inputmode:"decimal",
+      oninput:e=>{ const v=parseFloat(e.target.value); if(isNaN(v)) delete c.lng; else c.lng=v; }});
+    node.appendChild(el("div",{class:"field", style:"margin:8px 0 8px"}, la));
+    node.appendChild(el("div",{class:"field", style:"margin-bottom:0"}, lo));
+  }
+  if(has) node.appendChild(el("button",{class:"linkbtn", style:"font-size:12.5px", onclick:()=>{ delete c.lat; delete c.lng; render(); }}, "Quitar ubicación"));
+  return node;
+}
+
+// Mapa de cercanía dibujado localmente (sin tiles externos)
+function miniMap(centros){
+  const pts = centros.filter(c=>typeof c.lat==="number" && typeof c.lng==="number")
+    .map(c=>({lat:c.lat, lng:c.lng, estado:c.estado, me:false}));
+  if(!pts.length) return null;
+  const all = pts.slice();
+  if(state.myLoc) all.push({lat:state.myLoc.lat, lng:state.myLoc.lng, me:true});
+  let minLa=Math.min(...all.map(p=>p.lat)), maxLa=Math.max(...all.map(p=>p.lat));
+  let minLo=Math.min(...all.map(p=>p.lng)), maxLo=Math.max(...all.map(p=>p.lng));
+  const spanLa=(maxLa-minLa)||0.01, spanLo=(maxLo-minLo)||0.01;
+  minLa-=spanLa*0.18; maxLa+=spanLa*0.18; minLo-=spanLo*0.18; maxLo+=spanLo*0.18;
+  const W=320, H=190;
+  const X=lo=> ((lo-minLo)/(maxLo-minLo))*W;
+  const Y=la=> (1-(la-minLa)/(maxLa-minLa))*H;
+  const col={urgente:"#d62828", bajo:"#e07b00", suficiente:"#1b8a5a"};
+  let dots="";
+  for(const p of all){
+    const x=X(p.lng).toFixed(1), y=Y(p.lat).toFixed(1);
+    if(p.me) dots+=`<circle cx="${x}" cy="${y}" r="8" fill="none" stroke="#0c6e84" stroke-width="3"/><circle cx="${x}" cy="${y}" r="3" fill="#0c6e84"/>`;
+    else dots+=`<circle cx="${x}" cy="${y}" r="6.5" fill="${col[p.estado]||'#888'}" stroke="#fff" stroke-width="2"/>`;
+  }
+  const wrap=el("div",{class:"map"});
+  wrap.innerHTML=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mapa de cercanía">${dots}</svg>`;
+  const cont=el("div",{});
+  cont.appendChild(wrap);
+  cont.appendChild(el("div",{class:"legend"},
+    el("span",{html:'<i style="background:#d62828"></i>Urgente'}),
+    el("span",{html:'<i style="background:#e07b00"></i>Bajo'}),
+    el("span",{html:'<i style="background:#1b8a5a"></i>Suficiente'}),
+    state.myLoc ? el("span",{html:'<i style="background:#0c6e84"></i>Tú'}) : null
+  ));
+  cont.appendChild(el("div",{style:"font-size:11.5px;color:var(--faint);text-align:center;margin:-4px 0 12px;line-height:1.5"},
+    "Posiciones relativas, sin calles. Usa «Cómo llegar» en cada centro para navegar."));
+  return cont;
+}
+
+// Decide a dónde va el botón "Soy un centro"
+function entrarCentro(){
+  const mine = findCentro(state.myId);
+  if(mine && hasToken(mine.id)){ abrirCentro(mine); }   // este equipo ya tiene sesión guardada
+  else { state.screen = "elegir"; render(); }
+}
+function nuevoCentro(){
+  state.editing = {id:null, nombre:"", tipo:"hospital", zona:"", estado:"", necesidades:[], nota:"", contacto:""};
+  state.editIdentity = true;
+  state.dupMatch = null;
+  state.screen = "centro";
+  render();
+}
+function abrirCentro(c){
+  state.editing = JSON.parse(JSON.stringify(c));
+  state.editIdentity = false;
+  state.dupMatch = null;
+  state.screen = "centro";
+  render();
+}
+// Para abrir un centro hay que tener token; si no, ir al inicio de sesión por código
+function openCentro(c){
+  if(hasToken(c.id)){ abrirCentro(c); }
+  else { state.codeInput=""; state.codePw=""; state.codeNeedPw=false; state.codeError=""; state.screen="codigo"; render(); }
+}
+
+/* ---------- Carga / refresco ---------- */
+async function refresh(){
+  try{
+    state.centros = await store.listCentros();
+    state.myVerif = store.myVerifSet();
+    state.loadError = "";
+  }catch(err){
+    state.loadError = err.offline ? "No hay conexión con el servidor." : "No se pudo cargar la información.";
+  }
+  if(state.screen==="voluntario" || state.screen==="elegir") render();
+}
+async function boot(){
+  state.uid = store.getUid();
+  state.myId = store.getMyId();
+  state.myVerif = store.myVerifSet();
+  await refresh();
+  render();
+  setInterval(()=>{ if(document.visibilityState==="visible" && (state.screen==="voluntario")) refresh(); }, 8000);
+}
+
+/* ============================================================
+   Pantallas
+   ============================================================ */
+function topbar(title, sub, onBack){
+  return el("div",{class:"bar"},
+    onBack && el("button",{class:"back","aria-label":"Volver", onclick:onBack, html:"&#8592;"}),
+    el("div",{}, el("h1",{}, title), sub && el("div",{class:"sub"}, sub))
+  );
+}
+
+function landing(){
+  return el("div",{class:"wrap"},
+    el("main",{},
+      el("div",{class:"lede"},
+        el("div",{class:"kicker"}, "Coordinación de insumos"),
+        el("h2",{}, "¿A dónde hacen falta los insumos?"),
+        el("p",{}, "Los centros marcan lo que necesitan. Los voluntarios ven a dónde llevarlo. Sin vueltas.")
+      ),
+      el("div",{class:"choices"},
+        el("button",{class:"choice", onclick:entrarCentro},
+          el("div",{class:"ic", style:"background:var(--brand)"}, el("span",{html:"&#43;"})),
+          el("div",{},
+            el("div",{class:"t"}, "Soy un centro"),
+            el("div",{class:"d"}, "Hospital o refugio. Marca tu estado y qué necesitas.")
+          ),
+          el("div",{class:"chev", html:"&#8250;"})
+        ),
+        el("button",{class:"choice", onclick:()=>{ state.screen="voluntario"; render(); }},
+          el("div",{class:"ic", style:"background:var(--ink)"}, el("span",{html:"&#9733;"})),
+          el("div",{},
+            el("div",{class:"t"}, "Soy voluntario"),
+            el("div",{class:"d"}, "Ve los centros que necesitan insumos, ordenados por urgencia.")
+          ),
+          el("div",{class:"chev", html:"&#8250;"})
+        )
+      ),
+      footnote(),
+      el("button",{class:"adminlink", onclick:async()=>{
+        state.adminInput=""; state.adminError=""; state.adminCfg=null; state.screen="admin"; render();
+        try{ state.adminCfg = await store.adminState(); }catch(_){ state.adminCfg={configured:false}; }
+        if(state.screen==="admin") render();
+      }}, "Administración")
+    )
+  );
+}
+
+function footnote(){
+  return el("div",{class:"footnote"},
+    "La información se comparte con todos los voluntarios. No incluyas datos personales sensibles."
+  );
+}
+
+/* ----- Voluntario ----- */
+function voluntario(){
+  let list = state.centros.slice();
+  if(state.demo) list = list.concat(DEMO);
+  const counts = {urgente:0,bajo:0,suficiente:0};
+  list.forEach(c=>counts[c.estado]!==undefined && counts[c.estado]++);
+
+  let view = list.filter(c=>{
+    if(state.filterTipo && c.tipo!==state.filterTipo) return false;
+    if(state.filterSupply){
+      if(c.estado==="suficiente") return false;
+      if(!(c.necesidades||[]).includes(state.filterSupply)) return false;
+    }
+    return true;
+  });
+  if(state.sortBy==="cercania" && state.myLoc){
+    view.sort((a,b)=>{
+      const da=(typeof a.lat==="number")?distKm(state.myLoc,a):Infinity;
+      const db=(typeof b.lat==="number")?distKm(state.myLoc,b):Infinity;
+      return da-db || (STATUS[a.estado].order-STATUS[b.estado].order);
+    });
+  } else {
+    view.sort((a,b)=> (STATUS[a.estado].order-STATUS[b.estado].order) || (b.actualizado-a.actualizado));
+  }
+
+  const main = el("main",{});
+  if(state.loadError){
+    main.appendChild(el("div",{class:"dupwarn", style:"background:var(--urgente-bg);border-color:#f1b0ab;color:var(--urgente)"},
+      el("div",{style:"font-weight:800"}, state.loadError),
+      el("div",{style:"font-size:13px;margin-top:4px;color:var(--ink)"}, "Reintentando automáticamente…")));
+  }
+  // semáforo
+  main.appendChild(el("div",{class:"semaforo"},
+    el("div",{class:"stat u"}, el("b",{},String(counts.urgente)), el("span",{},"Urgente")),
+    el("div",{class:"stat b"}, el("b",{},String(counts.bajo)), el("span",{},"Bajo")),
+    el("div",{class:"stat s"}, el("b",{},String(counts.suficiente)), el("span",{},"Suficiente"))
+  ));
+  // filtros
+  const chip=(label,active,onClick)=>el("button",{class:"chip","aria-pressed":active?"true":"false", onclick:onClick},label);
+  const filterRow = el("div",{class:"filters"});
+  filterRow.appendChild(chip("Todos", !state.filterSupply && !state.filterTipo, ()=>{state.filterSupply=null;state.filterTipo=null;render();}));
+  filterRow.appendChild(chip("Hospitales", state.filterTipo==="hospital", ()=>{state.filterTipo=state.filterTipo==="hospital"?null:"hospital";render();}));
+  filterRow.appendChild(chip("Refugios", state.filterTipo==="refugio", ()=>{state.filterTipo=state.filterTipo==="refugio"?null:"refugio";render();}));
+  SUPPLIES.forEach(([k,l])=> filterRow.appendChild(chip(l, state.filterSupply===k, ()=>{state.filterSupply=state.filterSupply===k?null:k;render();})));
+  main.appendChild(filterRow);
+
+  // Herramientas: ubicación, orden y mapa
+  const conCoords = list.some(c=>typeof c.lat==="number");
+  const tools = el("div",{class:"toolrow"});
+  tools.appendChild(el("button",{onclick:async(e)=>{
+    const btn=e.currentTarget; btn.disabled=true; btn.textContent="Buscando…";
+    try{ state.myLoc=await getLocation(); state.sortBy="cercania"; render(); toast("Ubicación lista"); }
+    catch(err){ render(); toast("No se pudo obtener tu ubicación"); }
+  }}, state.myLoc ? "Actualizar mi ubicación" : "Usar mi ubicación"));
+  if(state.myLoc){
+    tools.appendChild(el("button",{"aria-pressed":state.sortBy==="urgencia"?"true":"false", onclick:()=>{state.sortBy="urgencia";render();}}, "Por urgencia"));
+    tools.appendChild(el("button",{"aria-pressed":state.sortBy==="cercania"?"true":"false", onclick:()=>{state.sortBy="cercania";render();}}, "Por cercanía"));
+  }
+  if(conCoords) tools.appendChild(el("button",{"aria-pressed":state.showMap?"true":"false", onclick:()=>{state.showMap=!state.showMap;render();}}, state.showMap?"Ocultar mapa":"Ver mapa"));
+  if(tools.childNodes.length) main.appendChild(tools);
+
+  if(state.showMap && conCoords){
+    const m = miniMap(view.length?view:list);
+    if(m) main.appendChild(m);
+  }
+
+  if(view.length===0){
+    main.appendChild(el("div",{class:"empty"},
+      el("div",{class:"big", html:"&#9737;"}),
+      el("h3",{}, list.length===0 ? "Todavía no hay centros" : "Nada coincide con el filtro"),
+      el("p",{}, list.length===0
+        ? "Cuando un hospital o refugio marque su estado, aparecerá aquí."
+        : "Quita algún filtro para ver más centros."),
+      list.length===0 && !state.demo && el("div",{style:"margin-top:16px"},
+        el("button",{class:"btn ghost", style:"max-width:240px;margin:0 auto", onclick:()=>{state.demo=true;render();}}, "Ver con datos de ejemplo"))
+    ));
+  } else {
+    view.forEach(c=> main.appendChild(facilityCard(c)));
+  }
+
+  if(state.demo){
+    main.appendChild(el("div",{class:"footnote"},
+      "Mostrando datos de ejemplo. ",
+      el("a",{href:"#", style:"color:var(--brand-ink);font-weight:700", onclick:(e)=>{e.preventDefault();state.demo=false;render();}}, "Ocultar ejemplos")));
+  }
+  main.appendChild(footnote());
+
+  return el("div",{class:"wrap"},
+    topbar("Centros que necesitan insumos",
+      (state.sortBy==="cercania" && state.myLoc) ? "Ordenado por cercanía a ti" : "Se actualiza solo · ordenado por urgencia",
+      ()=>{state.screen="landing";state.demo=false;state.filterSupply=null;state.filterTipo=null;render();}),
+    main
+  );
+}
+
+function facilityCard(c){
+  const st = STATUS[c.estado] || STATUS.bajo;
+  const tipoLabel = c.tipo==="hospital" ? "Hospital" : "Refugio";
+  const body = el("div",{class:"body"},
+    el("div",{class:"top"},
+      el("div",{style:"min-width:0"},
+        el("div",{class:"name"}, c.nombre),
+        el("div",{class:"meta"}, [tipoLabel, c.zona].filter(Boolean).join(" · "))
+      ),
+      el("div",{class:"pill "+c.estado}, st.label)
+    )
+  );
+  if(c.estado!=="suficiente" && (c.necesidades||[]).length){
+    const needs = el("div",{class:"needs"});
+    c.necesidades.forEach(k=> needs.appendChild(el("span",{class:"need"}, SUPPLY_LABEL[k]||k)));
+    body.appendChild(needs);
+  }
+  if(c.nota) body.appendChild(el("div",{class:"note"}, c.nota));
+
+  const fr = freshness(c.actualizado);
+  const foot = el("div",{class:"foot"}, el("span",{class:fr.cls}, fr.txt));
+  if(c.protegido) foot.appendChild(el("span",{class:"lock", title:"Protegido con contraseña"}, el("span",{html:"&#128274;"})));
+  if(state.myLoc && typeof c.lat==="number") foot.appendChild(el("span",{class:"dist"}, "a "+fmtDist(distKm(state.myLoc,c))));
+  const acciones = el("span",{style:"margin-left:auto; display:flex; gap:14px; align-items:center"});
+  if(typeof c.lat==="number") acciones.appendChild(el("a",{class:"cardlink", href:mapsLink(c), target:"_blank", rel:"noopener"}, "Cómo llegar"));
+  if(c.contacto){
+    const tel = String(c.contacto).replace(/[^\d+]/g,"");
+    acciones.appendChild(el("a",{class:"cardlink", href:"tel:"+tel}, "Llamar"));
+  }
+  if(acciones.childNodes.length) foot.appendChild(acciones);
+  body.appendChild(foot);
+
+  // Verificación por voluntarios
+  if(!c.demo){
+    const n = c.verif || 0;
+    const yo = state.myVerif.has(c.id);
+    const vrow = el("div",{class:"vrow"},
+      n>0
+        ? el("span",{class:"vbadge"}, el("span",{html:"&#10003;"}), "Verificado por "+n+(n===1?" voluntario":" voluntarios"))
+        : el("span",{class:"vbadge none"}, "Aún sin verificar"),
+      el("button",{class:"vbtn"+(yo?" on":""), onclick:async(e)=>{
+        const btn=e.currentTarget; btn.disabled=true;
+        try{
+          const r = await store.verify(c.id, state.uid);
+          if(r.verified) state.myVerif.add(c.id); else state.myVerif.delete(c.id);
+          store.setMyVerif(state.myVerif);
+          c.verif = r.count;
+          await refresh(); render();
+          toast(r.verified ? "Verificado, gracias" : "Quitaste tu verificación");
+        }catch(err){ btn.disabled=false; toast(err.offline?"Sin conexión":"No se pudo registrar"); }
+      }}, yo ? "Verificado por ti" : "Confirmar que es real")
+    );
+    body.appendChild(vrow);
+  } else {
+    body.appendChild(el("div",{class:"vrow"}, el("span",{class:"vbadge none"}, "Ejemplo")));
+  }
+  return el("div",{class:"card"}, el("div",{class:"rail "+c.estado}), body);
+}
+
+/* ----- Elegir / registrar centro ----- */
+function elegir(){
+  const mine = state.centros.filter(c=>c.id===state.myId);
+  const main = el("main",{});
+  main.appendChild(el("div",{class:"lede", style:"padding-top:12px"},
+    el("h2",{style:"font-size:23px"}, "Tu centro"),
+    el("p",{}, "Regístralo una vez. Después actualizas el estado en segundos, sin volver a escribir nada.")
+  ));
+
+  // Centro de este dispositivo (atajo grande)
+  if(mine.length){
+    main.appendChild(el("div",{style:"font-size:13px;font-weight:800;margin:6px 0 8px;color:var(--muted)"}, "ESTE DISPOSITIVO"));
+    mine.forEach(c=>{
+      main.appendChild(el("button",{class:"choice", style:"margin-bottom:10px", onclick:()=>openCentro(c)},
+        el("div",{class:"ic", style:"background:var(--brand)"}, el("span",{html:"&#8635;"})),
+        el("div",{},
+          el("div",{class:"t", style:"font-size:16px"}, c.nombre),
+          el("div",{class:"d"}, "Actualizar estado · "+(STATUS[c.estado]?.label||"sin estado")+" · "+hace(c.actualizado))
+        ),
+        el("div",{class:"chev", html:"&#8250;"})
+      ));
+    });
+  }
+
+  // Registrar nuevo
+  main.appendChild(el("button",{class:"btn", style:"margin:6px 0 10px", onclick:nuevoCentro}, "Registrar un centro nuevo"));
+  // Reabrir con código (otro teléfono)
+  main.appendChild(el("button",{class:"btn ghost", onclick:()=>{ state.codeInput=""; state.codeError=""; state.screen="codigo"; render(); }},
+    "Ya tengo un código de centro"));
+  main.appendChild(el("div",{style:"font-size:12.5px;color:var(--muted);margin:10px 2px 0;line-height:1.5"},
+    "¿Cambiaste de teléfono o se cerró la sesión? Usa el código que recibiste al registrar tu centro para actualizarlo, en vez de crearlo otra vez."));
+
+  main.appendChild(footnote());
+  return el("div",{class:"wrap"},
+    topbar("Soy un centro", null, ()=>{state.screen="landing";render();}),
+    main
+  );
+}
+
+/* ----- Reabrir centro con código ----- */
+function codigoScreen(){
+  const main = el("main",{});
+  main.appendChild(el("div",{class:"lede", style:"padding-top:12px"},
+    el("h2",{style:"font-size:23px"}, "Abrir tu centro"),
+    el("p",{}, "Escribe el código de 6 caracteres que recibiste al registrar el centro.")
+  ));
+  const input = el("input",{type:"text", value:state.codeInput, placeholder:"p. ej. K7M4PQ", maxlength:"6",
+    style:"text-transform:uppercase;letter-spacing:.18em;font-weight:800;font-size:22px;text-align:center",
+    autocapitalize:"characters", autocomplete:"off",
+    oninput:e=>{ state.codeInput=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6); e.target.value=state.codeInput; state.codeError=""; }});
+  main.appendChild(el("div",{class:"field"}, el("label",{}, "Código de acceso"), input));
+
+  if(state.codeNeedPw){
+    const pw = el("input",{type:"password", value:state.codePw, placeholder:"Contraseña del centro",
+      autocomplete:"current-password", oninput:e=>{ state.codePw=e.target.value; state.codeError=""; }});
+    main.appendChild(el("div",{class:"field"}, el("label",{}, "Contraseña ", el("span",{class:"hint"},"(este centro está protegido)")), pw));
+  }
+  if(state.codeError) main.appendChild(el("div",{style:"color:var(--urgente);font-size:13.5px;font-weight:700;margin:-6px 0 12px"}, state.codeError));
+
+  main.appendChild(el("button",{class:"btn", onclick:async()=>{
+    const code = state.codeInput.trim().toUpperCase();
+    if(code.length<6){ state.codeError="El código tiene 6 caracteres."; render(); return; }
+    try{
+      const d = await store.login(code, state.codeNeedPw ? state.codePw : "");
+      store.setMyId(d.centro.id); state.myId=d.centro.id;
+      state.codeNeedPw=false; state.codePw="";
+      abrirCentro(d.centro);
+      toast("Centro abierto");
+    }catch(err){
+      if(err.status===401 && err.data && err.data.error==="password_required"){
+        state.codeNeedPw=true; state.codeError="Este centro pide contraseña.";
+      } else if(err.status===401){ state.codeError="Contraseña incorrecta.";
+      } else if(err.status===404){ state.codeError="No encontramos ningún centro con ese código.";
+      } else if(err.offline){ state.codeError="No hay conexión con el servidor.";
+      } else { state.codeError="No se pudo abrir. Intenta de nuevo."; }
+      render();
+    }
+  }}, "Abrir centro"));
+
+  main.appendChild(footnote());
+  return el("div",{class:"wrap"},
+    topbar("Abrir con código", null, ()=>{state.screen="elegir"; state.codeNeedPw=false; state.codePw=""; render();}),
+    main
+  );
+}
+
+/* ----- Formulario del centro ----- */
+function centroForm(){
+  const c = state.editing;
+  const main = el("main",{});
+  const existente = !!c.id;                 // los centros del servidor traen id; uno nuevo no
+  const isMine = c.id===state.myId;
+  const codigo = existente ? codeFor(c.id) : null;
+
+  async function guardarExistente(msg){
+    try{
+      const payload = {nombre:c.nombre, tipo:c.tipo, zona:c.zona, contacto:c.contacto,
+        estado:c.estado, necesidades:c.necesidades, nota:c.nota,
+        lat:(typeof c.lat==="number"?c.lat:null), lng:(typeof c.lng==="number"?c.lng:null)};
+      if("lat" in c || "lng" in c){ payload.lat=(typeof c.lat==="number"?c.lat:null); payload.lng=(typeof c.lng==="number"?c.lng:null); }
+      if(c._pw && c._pw.length>0) payload.newPassword=c._pw;
+      payload.id=c.id;
+      await store.update(payload);
+      await refresh();
+      state.editing=null; state.screen="voluntario"; render(); toast(msg);
+    }catch(err){
+      if(err.status===401){ toast("Tu sesión expiró; vuelve a entrar con tu código");
+        state.codeInput=codigo||""; state.codeNeedPw=false; state.codePw=""; state.screen="codigo"; render(); }
+      else if(err.offline){ toast("Sin conexión con el servidor"); }
+      else { toast("No se pudo guardar"); }
+    }
+  }
+
+  // Encabezado para centros existentes: identidad fija + código, sin reescribir
+  if(existente){
+    const head = el("div",{class:"idcard"},
+      el("div",{class:"idrow"},
+        el("div",{style:"min-width:0"},
+          el("div",{class:"idname"}, c.nombre),
+          el("div",{class:"idmeta"}, [c.tipo==="hospital"?"Hospital":"Refugio", c.zona].filter(Boolean).join(" · "))
+        ),
+        isMine && el("span",{class:"mine", style:"margin:0"}, "Este equipo")
+      ),
+      codigo ? el("div",{class:"codebox"},
+        el("span",{class:"codelabel"}, "Código para actualizar desde otro teléfono"),
+        el("span",{class:"codeval"}, codigo)
+      ) : null,
+      locationCtrl(c),
+      el("button",{class:"linkbtn", onclick:()=>{ state.editIdentity=!state.editIdentity; render(); }},
+        state.editIdentity ? "Ocultar datos del centro" : "Editar nombre, tipo, zona o contacto")
+    );
+    main.appendChild(head);
+    main.appendChild(el("button",{class:"btn ghost", style:"margin-bottom:18px", onclick:()=>{ c._pw=""; guardarExistente("Estado confirmado"); }},
+      "Confirmar que sigue igual (sin cambios)"));
+  }
+
+  if(!existente || state.editIdentity){
+    if(state.dupMatch){
+      const m = state.dupMatch;
+      main.appendChild(el("div",{class:"dupwarn"},
+        el("div",{style:"font-weight:800;margin-bottom:4px"}, "¿Ya existe este centro?"),
+        el("div",{style:"font-size:13.5px"}, "Encontramos «"+m.nombre+"»"+(m.zona?(" en "+m.zona):"")+". Para no duplicarlo, abre el que ya está con su código."),
+        el("div",{class:"row2"},
+          el("button",{class:"btn", onclick:()=>{ state.dupMatch=null; state.codeInput=""; state.codeNeedPw=false; state.codePw=""; state.screen="codigo"; render(); }}, "Abrir el existente"),
+          el("button",{class:"btn ghost", onclick:()=>{ c._allowDup=true; state.dupMatch=null; render(); }}, "No, es otro")
+        )
+      ));
+    }
+    const nombre = el("input",{type:"text", value:c.nombre, placeholder:"p. ej. Hospital Central", maxlength:"80",
+      oninput:e=>{ c.nombre=e.target.value; c._allowDup=false; }});
+    main.appendChild(el("div",{class:"field"}, el("label",{}, "Nombre del centro"), nombre));
+
+    const tipoSeg = el("div",{class:"seg"},
+      el("button",{"aria-pressed":c.tipo==="hospital"?"true":"false", onclick:()=>{c.tipo="hospital";render();}}, "Hospital"),
+      el("button",{"aria-pressed":c.tipo==="refugio"?"true":"false", onclick:()=>{c.tipo="refugio";render();}}, "Refugio")
+    );
+    main.appendChild(el("div",{class:"field"}, el("label",{}, "Tipo"), tipoSeg));
+
+    const zona = el("input",{type:"text", value:c.zona, placeholder:"Barrio, sector o ciudad", maxlength:"60",
+      oninput:e=>c.zona=e.target.value});
+    main.appendChild(el("div",{class:"field"}, el("label",{}, "Zona ", el("span",{class:"hint"},"(para ubicarte)")), zona));
+
+    const contacto = el("input",{type:"text", value:c.contacto, placeholder:"Teléfono de quien recibe", maxlength:"40",
+      oninput:e=>c.contacto=e.target.value});
+    main.appendChild(el("div",{class:"field"}, el("label",{}, "Contacto ", el("span",{class:"hint"},"(opcional)")), contacto));
+
+    if(!existente){
+      main.appendChild(el("div",{class:"field"},
+        el("label",{}, "Ubicación ", el("span",{class:"hint"},"(ayuda a los voluntarios a llegar)")),
+        locationCtrl(c)));
+    }
+
+    const pw = el("input",{type:"password", placeholder: existente?"Nueva contraseña":"Crea una contraseña", maxlength:"60",
+      autocomplete:"new-password", oninput:e=>c._pw=e.target.value});
+    if(c._pw) pw.value=c._pw;
+    main.appendChild(el("div",{class:"field"},
+      el("label",{}, existente?"Cambiar contraseña ":"Contraseña ",
+        el("span",{class:"hint"}, existente?"(deja en blanco para no cambiarla)":"(recomendada: evita que otros modifiquen tu centro)")),
+      pw,
+      (existente && c.protegido) ? el("div",{class:"gatenote", style:"margin:8px 2px 0"}, "Este centro ya tiene contraseña. Escríbela aquí solo si quieres cambiarla.") : null
+    ));
+  }
+
+  // Estado (siempre)
+  const status3 = el("div",{class:"status3"});
+  [["suficiente"],["bajo"],["urgente"]].forEach(([k])=>{
+    status3.appendChild(el("button",{class:"sbtn "+k, "aria-pressed":c.estado===k?"true":"false", onclick:()=>{c.estado=k;render();}},
+      el("span",{class:"dot"}),
+      el("span",{class:"l"}, STATUS[k].label, el("small",{}, STATUS[k].desc)),
+      el("span",{class:"mark", html:"&#10003;"})
+    ));
+  });
+  main.appendChild(el("div",{class:"field"}, el("label",{}, "¿Cómo están de insumos?"), status3));
+
+  // Necesidades (solo si bajo/urgente)
+  if(c.estado==="bajo" || c.estado==="urgente"){
+    const sup = el("div",{class:"supplies"});
+    SUPPLIES.forEach(([k,l])=>{
+      const on = c.necesidades.includes(k);
+      sup.appendChild(el("button",{class:"supply","aria-pressed":on?"true":"false", onclick:()=>{
+        const i=c.necesidades.indexOf(k); if(i<0)c.necesidades.push(k); else c.necesidades.splice(i,1); render();
+      }}, l));
+    });
+    main.appendChild(el("div",{class:"field"}, el("label",{}, "¿Qué necesitan? ", el("span",{class:"hint"},"(toca todo lo que aplique)")), sup));
+
+    const nota = el("textarea",{placeholder:"p. ej. prioridad analgésicos; faltan jeringas 5ml", maxlength:"240",
+      oninput:e=>c.nota=e.target.value}); nota.value=c.nota||"";
+    main.appendChild(el("div",{class:"field"}, el("label",{}, "Nota ", el("span",{class:"hint"},"(opcional)")), nota));
+  }
+
+  const valid = c.nombre.trim().length>0 && !!c.estado;
+  const save = el("button",{class:"btn", disabled: valid?false:true, onclick:async()=>{
+    if(!valid) return;
+    c.nombre=c.nombre.trim(); c.zona=(c.zona||"").trim(); c.contacto=(c.contacto||"").trim(); c.nota=(c.nota||"").trim();
+    if(c.estado==="suficiente"){ c.necesidades=[]; }
+
+    if(existente){ await guardarExistente("Estado actualizado"); return; }
+
+    // Registro nuevo
+    const payload = {nombre:c.nombre, tipo:c.tipo, zona:c.zona, contacto:c.contacto,
+      estado:c.estado, necesidades:c.necesidades, nota:c.nota,
+      lat:(typeof c.lat==="number"?c.lat:null), lng:(typeof c.lng==="number"?c.lng:null),
+      password:c._pw||"", permitirDuplicado:!!c._allowDup};
+    try{
+      const d = await store.register(payload);
+      state.myId = d.centro.id; store.setMyId(d.centro.id);
+      await refresh();
+      state.editing=null; state.dupMatch=null;
+      state.savedCode = {nombre:d.centro.nombre, codigo:d.code, pw:d.centro.protegido};
+      state.screen="guardado"; render();
+    }catch(err){
+      if(err.status===409 && err.data && err.data.match){ state.dupMatch=err.data.match; state.editIdentity=true; render(); }
+      else if(err.offline){ toast("Sin conexión con el servidor"); }
+      else if(err.status===429){ toast("Demasiados intentos; espera un momento"); }
+      else { toast("No se pudo registrar"); }
+    }
+  }}, existente ? "Guardar cambios" : "Registrar y publicar");
+
+  main.appendChild(el("div",{class:"updnote"}, valid?(existente?"Listo para guardar":"Listo para registrar"):"Pon un nombre y elige un estado"));
+  main.appendChild(el("div",{class:"cta"}, save));
+
+  return el("div",{class:"wrap"},
+    topbar(c.nombre? c.nombre : "Nuevo centro", existente?"Actualiza tu estado":"Registra tu centro",
+      ()=>{state.screen="elegir"; state.editing=null; state.dupMatch=null; render();}),
+    main
+  );
+}
+
+
+/* ----- Panel de administración ----- */
+function adminScreen(){
+  const main = el("main",{});
+
+  // Gate: pedir/crear contraseña de administrador
+  if(!state.adminToken){
+    const cfg = state.adminCfg;
+    if(!cfg){
+      main.appendChild(el("div",{class:"empty"}, el("div",{class:"big", html:"&#8987;"}), el("h3",{}, "Cargando…")));
+      return el("div",{class:"wrap"}, topbar("Administración", null, ()=>{state.screen="landing"; render();}), main);
+    }
+    const first = !cfg.configured;
+    main.appendChild(el("div",{class:"lede", style:"padding-top:12px"},
+      el("h2",{style:"font-size:23px"}, first ? "Crear acceso de administrador" : "Acceso de administrador"),
+      el("p",{}, first
+        ? "Define una contraseña para revisar y eliminar centros. Quien la cree queda como administrador."
+        : "Escribe la contraseña de administrador para revisar los centros.")
+    ));
+    const input = el("input",{type:"password", value:state.adminInput, placeholder:"Contraseña",
+      autocomplete: first?"new-password":"current-password",
+      oninput:e=>{ state.adminInput=e.target.value; state.adminError=""; }});
+    main.appendChild(el("div",{class:"field"}, el("label",{}, "Contraseña de administrador"), input));
+    if(state.adminError) main.appendChild(el("div",{style:"color:var(--urgente);font-size:13.5px;font-weight:700;margin:-6px 0 12px"}, state.adminError));
+    main.appendChild(el("button",{class:"btn", onclick:async()=>{
+      const pw = state.adminInput||"";
+      try{
+        let token;
+        if(first){
+          if(pw.length<4){ state.adminError="Usa al menos 4 caracteres."; render(); return; }
+          token = await store.adminSetup(pw);
+        } else {
+          token = await store.adminLogin(pw);
+        }
+        state.adminToken = token; state.adminInput="";
+        try{ state.adminList = await store.adminList(token); }catch(_){ state.adminList=[]; }
+        render(); toast(first?"Administrador creado":"Sesión iniciada");
+      }catch(err){
+        if(err.status===401){ state.adminError="Contraseña incorrecta."; }
+        else if(err.status===409){ state.adminError="Ya estaba configurado; entra con la contraseña."; state.adminCfg={configured:true}; }
+        else if(err.offline){ state.adminError="Sin conexión con el servidor."; }
+        else { state.adminError="No se pudo continuar."; }
+        render();
+      }
+    }}, first ? "Crear y entrar" : "Entrar"));
+    if(cfg.envManaged) main.appendChild(el("div",{class:"gatenote", style:"margin-top:14px"},
+      "La contraseña de administrador está fijada por el servidor (variable ADMIN_PASSWORD)."));
+    return el("div",{class:"wrap"}, topbar("Administración", null, ()=>{state.screen="landing"; render();}), main);
+  }
+
+  // Panel autenticado
+  const list = (state.adminList||[]).slice().sort((a,b)=>b.actualizado-a.actualizado);
+  main.appendChild(el("div",{class:"lede", style:"padding-top:12px"},
+    el("h2",{style:"font-size:23px"}, "Centros registrados ("+list.length+")"),
+    el("p",{}, "Revisa los reportes y elimina los que no sean reales.")
+  ));
+  main.appendChild(el("button",{class:"smallbtn", style:"margin:0 0 14px", onclick:async()=>{
+    try{ state.adminList=await store.adminList(state.adminToken); render(); toast("Lista actualizada"); }
+    catch(_){ toast("No se pudo actualizar"); }
+  }}, "Actualizar lista"));
+  if(!list.length){
+    main.appendChild(el("div",{class:"empty"}, el("div",{class:"big", html:"&#9737;"}),
+      el("h3",{}, "No hay centros"), el("p",{}, "Aún nadie se ha registrado.")));
+  }
+  list.forEach(c=>{
+    const meta=[ c.tipo==="hospital"?"Hospital":"Refugio", c.zona, STATUS[c.estado]?.label,
+      (c.verif||0)+" verif.", c.protegido?"con contraseña":"sin contraseña",
+      (typeof c.lat==="number")?"con ubicación":"sin ubicación",
+      "actualizado "+hace(c.actualizado) ].filter(Boolean).join(" · ");
+    const acts = el("div",{class:"aacts"});
+    if(typeof c.lat==="number")
+      acts.appendChild(el("a",{class:"smallbtn", href:mapsLink(c), target:"_blank", rel:"noopener"}, "Ver en mapa"));
+    if(state.adminDelId===c.id){
+      acts.appendChild(el("button",{class:"danger solid", onclick:async()=>{
+        try{
+          await store.adminDelete(state.adminToken, c.id);
+          if(state.myId===c.id){ state.myId=null; store.setMyId(""); }
+          state.adminDelId=null;
+          state.adminList = await store.adminList(state.adminToken);
+          await refresh(); render(); toast("Centro eliminado");
+        }catch(err){ toast(err.status===401?"Sesión de admin expirada":"No se pudo eliminar"); }
+      }}, "Sí, eliminar"));
+      acts.appendChild(el("button",{class:"smallbtn", onclick:()=>{ state.adminDelId=null; render(); }}, "Cancelar"));
+    } else {
+      acts.appendChild(el("button",{class:"danger", onclick:()=>{ state.adminDelId=c.id; render(); }}, "Eliminar"));
+    }
+    main.appendChild(el("div",{class:"adminrow"},
+      el("div",{class:"an"}, c.nombre),
+      el("div",{class:"am"}, meta),
+      c.nota ? el("div",{class:"am", style:"margin-top:4px"}, "Nota: "+c.nota) : null,
+      acts
+    ));
+  });
+  main.appendChild(el("div",{style:"margin-top:16px"},
+    el("button",{class:"btn ghost", onclick:()=>{ state.adminToken=null; state.adminDelId=null; state.adminList=[]; state.screen="landing"; render(); }}, "Salir de administración")));
+
+  return el("div",{class:"wrap"},
+    topbar("Administración", "Solo personal autorizado", ()=>{state.adminDelId=null; state.screen="landing"; render();}),
+    main
+  );
+}
+
+/* ----- Confirmación tras registrar (muestra el código) ----- */
+function guardadoScreen(){
+  const s = state.savedCode || {nombre:"", codigo:""};
+  return el("div",{class:"wrap"},
+    topbar("Centro registrado", null, ()=>{state.screen="voluntario"; render();}),
+    el("main",{},
+      el("div",{class:"empty", style:"padding-top:30px"},
+        el("div",{class:"big", style:"color:var(--suf)", html:"&#10003;"}),
+        el("h3",{}, "«"+s.nombre+"» ya está publicado"),
+        el("p",{}, "Guarda este código. Te servirá para actualizar el estado desde otro teléfono sin crear el centro de nuevo.")
+      ),
+      el("div",{class:"codebig"}, s.codigo),
+      el("div",{style:"font-size:12.5px;color:var(--muted);text-align:center;margin:6px 16px 0;line-height:1.5"},
+        s.pw ? "Anótalo y recuerda también tu contraseña: el código ubica el centro y la contraseña autoriza los cambios."
+             : "Anótalo o compártelo solo con quien administre este centro."),
+      el("div",{class:"cta", style:"margin-top:18px"},
+        el("button",{class:"btn", onclick:()=>{state.screen="voluntario"; render();}}, "Entendido"))
+    )
+  );
+}
+
+/* ---------- Render raíz ---------- */
+function render(){
+  const root = document.getElementById("app");
+  let node;
+  if(state.screen==="landing") node=landing();
+  else if(state.screen==="voluntario") node=voluntario();
+  else if(state.screen==="elegir") node=elegir();
+  else if(state.screen==="codigo") node=codigoScreen();
+  else if(state.screen==="admin") node=adminScreen();
+  else if(state.screen==="centro") node=centroForm();
+  else if(state.screen==="guardado") node=guardadoScreen();
+  else node=landing();
+  root.replaceWith(node);
+  node.id="app";
+  window.scrollTo(0,0);
+}
+
+boot();
+</script>
+</body>
+</html>

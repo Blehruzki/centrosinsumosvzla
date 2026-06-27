@@ -1,0 +1,43 @@
+services:
+  # La aplicación. No publica puertos al host: solo es accesible
+  # a través de Caddy. Sus datos viven en un volumen aislado.
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DB_PATH=/data/insumos.db
+    volumes:
+      - insumos-data:/data
+    expose:
+      - "8000"          # visible solo dentro de la red de Docker, no al host
+    networks:
+      - interna
+
+  # Caddy: termina HTTPS (certificado automático de Let's Encrypt) y
+  # reenvía el tráfico a la app. Es lo único expuesto a internet.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      - DOMAIN=${DOMAIN}
+      - EMAIL=${EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - interna
+
+volumes:
+  insumos-data:     # base de datos SQLite (persistente y aislada)
+  caddy-data:       # certificados TLS
+  caddy-config:
+
+networks:
+  interna:
