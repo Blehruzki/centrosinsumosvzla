@@ -57,8 +57,7 @@
   .stat span{display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-top:6px; color:var(--muted);}
   .stat.u b{color:var(--urgente)} .stat.b b{color:var(--bajo)} .stat.s b{color:var(--suf)}
   /* filters */
-  .filters{display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; margin-bottom:12px; -webkit-overflow-scrolling:touch;}
-  .filters::-webkit-scrollbar{display:none}
+  .filters{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px;}
   .chip{flex:0 0 auto; appearance:none; cursor:pointer; border:1px solid var(--line);
     background:var(--surface); color:var(--ink); border-radius:999px; padding:9px 14px;
     font-size:13px; font-weight:700;}
@@ -175,6 +174,9 @@
     border-radius:9px; padding:8px 12px; font-size:13px; font-weight:700; margin-left:auto; text-decoration:none; display:inline-block;}
   .map{border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:8px; margin-bottom:6px; background:var(--surface);}
   .map svg{width:100%; height:auto; display:block; border-radius:10px; background:#e7edf0;}
+  .leafmap{height:240px; width:100%; border-radius:12px; overflow:hidden; border:1px solid var(--line); box-shadow:var(--shadow); margin-bottom:6px; z-index:0;}
+  .leaflet-container{font:inherit;}
+  .leaflet-popup-content{font-size:13px; font-weight:600;}
   .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; font-weight:700; color:var(--muted); padding:4px 4px 12px;}
   .legend i{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:middle;}
   .toolrow{display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;}
@@ -193,6 +195,8 @@
   .adminlink{display:block; text-align:center; margin-top:6px; font-size:12px; font-weight:700; color:var(--faint); text-decoration:underline; cursor:pointer; background:none; border:0; width:100%;}
   @media (prefers-reduced-motion: reduce){ *{transition:none !important} .choice:active,.btn:active{transform:none} }
 </style>
+<link rel="stylesheet" href="/leaflet/leaflet.css" />
+<script src="/leaflet/leaflet.js"></script>
 </head>
 <body>
 <div class="wrap" id="app"></div>
@@ -403,39 +407,63 @@ function locationCtrl(c){
 }
 
 // Mapa de cercanía dibujado localmente (sin tiles externos)
+// Mapa real con calles (Leaflet + OpenStreetMap). El mapa se crea una vez y se
+// mantiene vivo entre redibujados, así no se reinicia el zoom en cada refresco.
+let _map=null, _mapBox=null, _mapEl=null, _legendEl=null, _markers=null, _fitDone=false;
 function miniMap(centros){
-  const pts = centros.filter(c=>typeof c.lat==="number" && typeof c.lng==="number")
-    .map(c=>({lat:c.lat, lng:c.lng, estado:c.estado, me:false}));
+  const pts = centros.filter(c=>typeof c.lat==="number" && typeof c.lng==="number");
   if(!pts.length) return null;
-  const all = pts.slice();
-  if(state.myLoc) all.push({lat:state.myLoc.lat, lng:state.myLoc.lng, me:true});
-  let minLa=Math.min(...all.map(p=>p.lat)), maxLa=Math.max(...all.map(p=>p.lat));
-  let minLo=Math.min(...all.map(p=>p.lng)), maxLo=Math.max(...all.map(p=>p.lng));
-  const spanLa=(maxLa-minLa)||0.01, spanLo=(maxLo-minLo)||0.01;
-  minLa-=spanLa*0.18; maxLa+=spanLa*0.18; minLo-=spanLo*0.18; maxLo+=spanLo*0.18;
-  const W=320, H=190;
-  const X=lo=> ((lo-minLo)/(maxLo-minLo))*W;
-  const Y=la=> (1-(la-minLa)/(maxLa-minLa))*H;
-  const col={urgente:"#d62828", bajo:"#e07b00", suficiente:"#1b8a5a"};
-  let dots="";
-  for(const p of all){
-    const x=X(p.lng).toFixed(1), y=Y(p.lat).toFixed(1);
-    if(p.me) dots+=`<circle cx="${x}" cy="${y}" r="8" fill="none" stroke="#0c6e84" stroke-width="3"/><circle cx="${x}" cy="${y}" r="3" fill="#0c6e84"/>`;
-    else dots+=`<circle cx="${x}" cy="${y}" r="6.5" fill="${col[p.estado]||'#888'}" stroke="#fff" stroke-width="2"/>`;
+  if(typeof L==="undefined"){
+    return el("div",{class:"map", style:"padding:16px;text-align:center;color:var(--muted);font-size:13px"},
+      "No se pudo cargar el mapa.");
   }
-  const wrap=el("div",{class:"map"});
-  wrap.innerHTML=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mapa de cercanía">${dots}</svg>`;
-  const cont=el("div",{});
-  cont.appendChild(wrap);
-  cont.appendChild(el("div",{class:"legend"},
-    el("span",{html:'<i style="background:#d62828"></i>Urgente'}),
-    el("span",{html:'<i style="background:#e07b00"></i>Bajo'}),
-    el("span",{html:'<i style="background:#1b8a5a"></i>Suficiente'}),
-    state.myLoc ? el("span",{html:'<i style="background:#0c6e84"></i>Tú'}) : null
-  ));
-  cont.appendChild(el("div",{style:"font-size:11.5px;color:var(--faint);text-align:center;margin:-4px 0 12px;line-height:1.5"},
-    "Posiciones relativas, sin calles. Usa «Cómo llegar» en cada centro para navegar."));
-  return cont;
+  // Contenedor (una sola vez; se reutiliza en cada redibujado)
+  if(!_mapBox){
+    _mapEl = el("div",{class:"leafmap"});
+    _legendEl = el("div",{class:"legend"});
+    _mapBox = el("div",{});
+    _mapBox.appendChild(_mapEl);
+    _mapBox.appendChild(_legendEl);
+  }
+  // Crear el mapa Leaflet una sola vez
+  if(!_map){
+    _map = L.map(_mapEl, {zoomControl:true});
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {maxZoom:19, attribution:"&copy; OpenStreetMap"}).addTo(_map);
+    _markers = L.layerGroup().addTo(_map);
+    _map.setView([pts[0].lat, pts[0].lng], 13);
+  }
+  // Refrescar marcadores
+  _markers.clearLayers();
+  const col={urgente:"#d62828", bajo:"#e07b00", suficiente:"#1b8a5a"};
+  const bounds=[];
+  for(const c of pts){
+    L.circleMarker([c.lat,c.lng], {radius:8, color:"#fff", weight:2,
+      fillColor:col[c.estado]||"#888", fillOpacity:1})
+      .bindPopup("<b>"+esc(c.nombre)+"</b><br>"+(STATUS[c.estado]?STATUS[c.estado].label:""))
+      .addTo(_markers);
+    bounds.push([c.lat,c.lng]);
+  }
+  if(state.myLoc){
+    L.circleMarker([state.myLoc.lat,state.myLoc.lng], {radius:7, color:"#0c6e84",
+      weight:3, fillColor:"#0c6e84", fillOpacity:.35}).bindPopup("Tú").addTo(_markers);
+    bounds.push([state.myLoc.lat, state.myLoc.lng]);
+  }
+  // Encuadrar solo la primera vez (no molestar el zoom del usuario en refrescos)
+  if(!_fitDone && bounds.length){
+    if(bounds.length===1) _map.setView(bounds[0], 14);
+    else _map.fitBounds(bounds, {padding:[24,24]});
+    _fitDone = true;
+  }
+  // Leyenda
+  _legendEl.innerHTML =
+    '<span><i style="background:#d62828"></i>Urgente</span>'+
+    '<span><i style="background:#e07b00"></i>Bajo</span>'+
+    '<span><i style="background:#1b8a5a"></i>Suficiente</span>'+
+    (state.myLoc?'<span><i style="background:#0c6e84"></i>Tú</span>':'');
+  // Recalcular tamaño una vez que el nodo ya está en pantalla
+  setTimeout(()=>{ try{ _map.invalidateSize(); }catch(_){ } }, 30);
+  return _mapBox;
 }
 
 // Decide a dónde va el botón "Soy un centro"
@@ -594,10 +622,10 @@ function voluntario(){
     tools.appendChild(el("button",{"aria-pressed":state.sortBy==="urgencia"?"true":"false", onclick:()=>{state.sortBy="urgencia";render();}}, "Por urgencia"));
     tools.appendChild(el("button",{"aria-pressed":state.sortBy==="cercania"?"true":"false", onclick:()=>{state.sortBy="cercania";render();}}, "Por cercanía"));
   }
-  if(conCoords) tools.appendChild(el("button",{"aria-pressed":state.showMap?"true":"false", onclick:()=>{state.showMap=!state.showMap;render();}}, state.showMap?"Ocultar mapa":"Ver mapa"));
   if(tools.childNodes.length) main.appendChild(tools);
 
-  if(state.showMap && conCoords){
+  // Mapa siempre visible (se refresca con la vista cada pocos segundos)
+  if(conCoords){
     const m = miniMap(view.length?view:list);
     if(m) main.appendChild(m);
   }
@@ -889,9 +917,12 @@ function centroForm(){
     const sup = el("div",{class:"supplies"});
     SUPPLIES.forEach(([k,l])=>{
       const on = c.necesidades.includes(k);
-      sup.appendChild(el("button",{class:"supply","aria-pressed":on?"true":"false", onclick:()=>{
-        const i=c.necesidades.indexOf(k); if(i<0)c.necesidades.push(k); else c.necesidades.splice(i,1); render();
-      }}, l));
+      const b = el("button",{class:"supply","aria-pressed":on?"true":"false", onclick:()=>{
+        const i=c.necesidades.indexOf(k);
+        if(i<0) c.necesidades.push(k); else c.necesidades.splice(i,1);
+        b.setAttribute("aria-pressed", c.necesidades.includes(k)?"true":"false");  // sin re-render: no pierde el scroll
+      }}, l);
+      sup.appendChild(b);
     });
     main.appendChild(el("div",{class:"field"}, el("label",{}, "¿Qué necesitan? ", el("span",{class:"hint"},"(toca todo lo que aplique)")), sup));
 
@@ -1062,8 +1093,11 @@ function guardadoScreen(){
 }
 
 /* ---------- Render raíz ---------- */
+let _lastScreen = null;
 function render(){
   const root = document.getElementById("app");
+  const y = window.scrollY;                 // recordar posición actual
+  const sameScreen = (state.screen === _lastScreen);
   let node;
   if(state.screen==="landing") node=landing();
   else if(state.screen==="voluntario") node=voluntario();
@@ -1075,7 +1109,9 @@ function render(){
   else node=landing();
   root.replaceWith(node);
   node.id="app";
-  window.scrollTo(0,0);
+  _lastScreen = state.screen;
+  // Si seguimos en la misma pantalla, mantener el scroll; si cambiamos, ir arriba
+  window.scrollTo(0, sameScreen ? y : 0);
 }
 
 boot();
