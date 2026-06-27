@@ -62,6 +62,12 @@
     background:var(--surface); color:var(--ink); border-radius:999px; padding:9px 14px;
     font-size:13px; font-weight:700;}
   .chip[aria-pressed="true"]{background:var(--ink); color:#fff; border-color:var(--ink);}
+  /* tipo (hospital/refugio): teal */
+  .chip.tipo{background:#e6eff2; color:#0a6376; border-color:#d2e4e8;}
+  .chip.tipo[aria-pressed="true"]{background:#0c6e84; color:#fff; border-color:#0c6e84;}
+  /* insumos: violeta */
+  .chip.ins{background:#ecebfa; color:#4a43b5; border-color:#dddaf4;}
+  .chip.ins[aria-pressed="true"]{background:#534bc2; color:#fff; border-color:#534bc2;}
   /* facility card (volunteer) */
   .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
     box-shadow:var(--shadow); margin-bottom:12px; overflow:hidden; display:flex;}
@@ -165,6 +171,18 @@
     border-radius:999px; padding:7px 13px; font-size:12.5px; font-weight:700; margin-left:auto;}
   .vbtn.on{background:var(--suf); color:#fff; border-color:var(--suf);}
   .lock{display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; color:var(--muted);}
+  /* reportar (voluntario) */
+  .reportlink{appearance:none; background:none; border:0; cursor:pointer; font-size:12px; font-weight:700;
+    color:var(--faint); text-decoration:underline; padding:6px 0 0; width:100%; text-align:right;}
+  .reportbox{margin-top:10px; padding:12px; background:var(--subtle); border-radius:12px;}
+  .reportbox .rt{font-size:13px; font-weight:800; margin-bottom:8px;}
+  .reasons{display:flex; flex-wrap:wrap; gap:7px; margin-bottom:9px;}
+  .reasons button{appearance:none; cursor:pointer; border:1px solid var(--line); background:var(--surface);
+    color:var(--ink); border-radius:999px; padding:7px 12px; font-size:12.5px; font-weight:700;}
+  .reasons button[aria-pressed="true"]{background:var(--urgente); color:#fff; border-color:var(--urgente);}
+  .reportbox textarea{width:100%; box-sizing:border-box; border:1px solid var(--line); border-radius:9px;
+    padding:9px 10px; font:inherit; font-size:13px; resize:vertical; min-height:54px; background:var(--surface);}
+  .reportbox .ractions{display:flex; gap:8px; margin-top:9px;}
   /* gate de contraseña */
   .gatenote{font-size:12.5px; color:var(--muted); margin:-4px 2px 16px; line-height:1.5;}
   /* ubicación + mapa */
@@ -222,6 +240,8 @@ const SUPPLIES = [
   ["combustible", "Combustible"],
 ];
 const SUPPLY_LABEL = Object.fromEntries(SUPPLIES);
+const MOTIVOS = [["no_existe","No existe"],["duplicado","Duplicado"],["falso","Falso"],["otro","Otro"]];
+const MOTIVO_LABEL = Object.fromEntries(MOTIVOS);
 
 const STATUS = {
   suficiente: {label:"Suficiente", desc:"No necesita reabastecimiento ahora", order:2},
@@ -266,6 +286,9 @@ const store = {
   async verify(id, uid){
     return await api("/centros/"+id+"/verify",{method:"POST", body:JSON.stringify({uid})}); // {count, verified}
   },
+  async report(id, motivo, texto, uid){
+    return await api("/centros/"+id+"/report",{method:"POST", body:JSON.stringify({motivo, texto, uid})}); // {count}
+  },
   getMyId(){ return lsGet("mi-centro"); },
   setMyId(id){ lsSet("mi-centro", id||null); },
   getUid(){ let u=lsGet("mi-uid"); if(!u){ u=uid(); lsSet("mi-uid",u); } return u; },
@@ -277,6 +300,7 @@ const store = {
   async adminLogin(password){ return (await api("/admin/login",{method:"POST", body:JSON.stringify({password})})).token; },
   async adminList(token){ return (await api("/admin/centros",{headers:{Authorization:"Bearer "+token}})).centros||[]; },
   async adminDelete(token, id){ return await api("/admin/centros/"+id,{method:"DELETE", headers:{Authorization:"Bearer "+token}}); },
+  async adminClearReports(token, id){ return await api("/admin/centros/"+id+"/reportes",{method:"DELETE", headers:{Authorization:"Bearer "+token}}); },
 };
 
 /* ---------- Estado de la app ---------- */
@@ -308,6 +332,7 @@ let state = {
   adminInput: "",
   adminError: "",
   adminDelId: null,      // centro pendiente de confirmar borrado
+  reportFor: null,       // centro con el panel de reporte abierto
   demo: false,
 };
 
@@ -602,12 +627,12 @@ function voluntario(){
     el("div",{class:"stat s"}, el("b",{},String(counts.suficiente)), el("span",{},"Suficiente"))
   ));
   // filtros
-  const chip=(label,active,onClick)=>el("button",{class:"chip","aria-pressed":active?"true":"false", onclick:onClick},label);
+  const chip=(label,active,onClick,variant)=>el("button",{class:"chip"+(variant?" "+variant:""),"aria-pressed":active?"true":"false", onclick:onClick},label);
   const filterRow = el("div",{class:"filters"});
   filterRow.appendChild(chip("Todos", !state.filterSupply && !state.filterTipo, ()=>{state.filterSupply=null;state.filterTipo=null;render();}));
-  filterRow.appendChild(chip("Hospitales", state.filterTipo==="hospital", ()=>{state.filterTipo=state.filterTipo==="hospital"?null:"hospital";render();}));
-  filterRow.appendChild(chip("Refugios", state.filterTipo==="refugio", ()=>{state.filterTipo=state.filterTipo==="refugio"?null:"refugio";render();}));
-  SUPPLIES.forEach(([k,l])=> filterRow.appendChild(chip(l, state.filterSupply===k, ()=>{state.filterSupply=state.filterSupply===k?null:k;render();})));
+  filterRow.appendChild(chip("Hospitales", state.filterTipo==="hospital", ()=>{state.filterTipo=state.filterTipo==="hospital"?null:"hospital";render();}, "tipo"));
+  filterRow.appendChild(chip("Refugios", state.filterTipo==="refugio", ()=>{state.filterTipo=state.filterTipo==="refugio"?null:"refugio";render();}, "tipo"));
+  SUPPLIES.forEach(([k,l])=> filterRow.appendChild(chip(l, state.filterSupply===k, ()=>{state.filterSupply=state.filterSupply===k?null:k;render();}, "ins")));
   main.appendChild(filterRow);
 
   // Herramientas: ubicación, orden y mapa
@@ -666,7 +691,8 @@ function facilityCard(c){
     el("div",{class:"top"},
       el("div",{style:"min-width:0"},
         el("div",{class:"name"}, c.nombre),
-        el("div",{class:"meta"}, [tipoLabel, c.zona].filter(Boolean).join(" · "))
+        el("div",{class:"meta"}, [tipoLabel, c.zona].filter(Boolean).join(" · ")),
+        c.contacto ? el("div",{class:"meta contacto"}, el("span",{html:"&#128222; "}), c.contacto) : null
       ),
       el("div",{class:"pill "+c.estado}, st.label)
     )
@@ -712,10 +738,52 @@ function facilityCard(c){
       }}, yo ? "Verificado por ti" : "Confirmar que es real")
     );
     body.appendChild(vrow);
+
+    // Reportar centro
+    if(state.reportFor===c.id){
+      body.appendChild(reportPanel(c));
+    } else {
+      body.appendChild(el("button",{class:"reportlink", onclick:()=>{ state.reportFor=c.id; render(); }},
+        "Reportar este centro"));
+    }
   } else {
     body.appendChild(el("div",{class:"vrow"}, el("span",{class:"vbadge none"}, "Ejemplo")));
   }
   return el("div",{class:"card"}, el("div",{class:"rail "+c.estado}), body);
+}
+
+// Panel para reportar un centro (motivo + texto opcional). Usa variables locales
+// para no redibujar mientras el voluntario escribe (no pierde el foco del texto).
+function reportPanel(c){
+  let chosen = null;
+  let txt = "";
+  const box = el("div",{class:"reportbox"});
+  box.appendChild(el("div",{class:"rt"}, "¿Por qué reportas este centro?"));
+  const reasons = el("div",{class:"reasons"});
+  const btns = {};
+  MOTIVOS.forEach(([k,l])=>{
+    const b = el("button",{"aria-pressed":"false", onclick:()=>{
+      chosen=k;
+      for(const kk in btns) btns[kk].setAttribute("aria-pressed", kk===k?"true":"false");
+    }}, l);
+    btns[k]=b; reasons.appendChild(b);
+  });
+  box.appendChild(reasons);
+  const ta = el("textarea",{placeholder:"Más detalles (opcional)", maxlength:"240",
+    oninput:e=>{ txt=e.target.value; }});
+  box.appendChild(ta);
+  box.appendChild(el("div",{class:"ractions"},
+    el("button",{class:"danger", style:"flex:1", onclick:async(e)=>{
+      if(!chosen){ toast("Elige un motivo"); return; }
+      const btn=e.currentTarget; btn.disabled=true;
+      try{
+        await store.report(c.id, chosen, txt, state.uid);
+        state.reportFor=null; render(); toast("Reporte enviado, gracias");
+      }catch(err){ btn.disabled=false; toast(err.offline?"Sin conexión":"No se pudo enviar"); }
+    }}, "Enviar reporte"),
+    el("button",{class:"smallbtn", style:"margin-left:0", onclick:()=>{ state.reportFor=null; render(); }}, "Cancelar")
+  ));
+  return box;
 }
 
 /* ----- Elegir / registrar centro ----- */
@@ -1034,6 +1102,7 @@ function adminScreen(){
       el("h3",{}, "No hay centros"), el("p",{}, "Aún nadie se ha registrado.")));
   }
   list.forEach(c=>{
+    const nrep = c.reportes || 0;
     const meta=[ c.tipo==="hospital"?"Hospital":"Refugio", c.zona, STATUS[c.estado]?.label,
       (c.verif||0)+" verif.", c.protegido?"con contraseña":"sin contraseña",
       (typeof c.lat==="number")?"con ubicación":"sin ubicación",
@@ -1041,6 +1110,13 @@ function adminScreen(){
     const acts = el("div",{class:"aacts"});
     if(typeof c.lat==="number")
       acts.appendChild(el("a",{class:"smallbtn", href:mapsLink(c), target:"_blank", rel:"noopener"}, "Ver en mapa"));
+    if(nrep>0){
+      acts.appendChild(el("button",{class:"smallbtn", onclick:async()=>{
+        try{ await store.adminClearReports(state.adminToken, c.id);
+          state.adminList = await store.adminList(state.adminToken); render(); toast("Reportes descartados"); }
+        catch(_){ toast("No se pudo descartar"); }
+      }}, "Descartar reportes"));
+    }
     if(state.adminDelId===c.id){
       acts.appendChild(el("button",{class:"danger solid", onclick:async()=>{
         try{
@@ -1055,12 +1131,25 @@ function adminScreen(){
     } else {
       acts.appendChild(el("button",{class:"danger", onclick:()=>{ state.adminDelId=c.id; render(); }}, "Eliminar"));
     }
-    main.appendChild(el("div",{class:"adminrow"},
+
+    const row = el("div",{class:"adminrow"},
       el("div",{class:"an"}, c.nombre),
       el("div",{class:"am"}, meta),
-      c.nota ? el("div",{class:"am", style:"margin-top:4px"}, "Nota: "+c.nota) : null,
-      acts
-    ));
+      c.nota ? el("div",{class:"am", style:"margin-top:4px"}, "Nota: "+c.nota) : null
+    );
+    // Reportes (motivo + texto)
+    if(nrep>0){
+      row.appendChild(el("div",{style:"margin-top:9px;padding:9px 11px;background:var(--urgente-bg);border-radius:9px"},
+        el("div",{style:"font-size:12.5px;font-weight:800;color:var(--urgente);margin-bottom:5px"},
+          "⚠ "+nrep+(nrep===1?" reporte":" reportes")),
+        ...(c.reportes_detalle||[]).map(r=>
+          el("div",{style:"font-size:12.5px;color:var(--ink);margin-top:3px;line-height:1.45"},
+            el("b",{}, MOTIVO_LABEL[r.motivo]||r.motivo),
+            r.texto ? (" — "+r.texto) : ""))
+      ));
+    }
+    row.appendChild(acts);
+    main.appendChild(row);
   });
   main.appendChild(el("div",{style:"margin-top:16px"},
     el("button",{class:"btn ghost", onclick:()=>{ state.adminToken=null; state.adminDelId=null; state.adminList=[]; state.screen="landing"; render(); }}, "Salir de administración")));

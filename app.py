@@ -44,6 +44,7 @@ SUPPLIES = {"agua", "alimentos", "medicamentos", "curacion",
             "abrigo", "higiene", "energia", "combustible"}
 ESTADOS = {"suficiente", "bajo", "urgente"}
 TIPOS = {"hospital", "refugio"}
+MOTIVOS = {"no_existe", "duplicado", "falso", "otro"}
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 app = Flask(__name__, static_folder=None)
@@ -92,6 +93,15 @@ def init_db():
     CREATE TABLE IF NOT EXISTS verif (
         centro_id TEXT NOT NULL,
         uid TEXT NOT NULL,
+        PRIMARY KEY (centro_id, uid),
+        FOREIGN KEY (centro_id) REFERENCES centros(id) ON DELETE CASCADE
+    );
+    CREATE TABLE IF NOT EXISTS reportes (
+        centro_id TEXT NOT NULL,
+        uid TEXT NOT NULL,
+        motivo TEXT NOT NULL,
+        texto TEXT,
+        creado INTEGER NOT NULL,
         PRIMARY KEY (centro_id, uid),
         FOREIGN KEY (centro_id) REFERENCES centros(id) ON DELETE CASCADE
     );
@@ -405,6 +415,30 @@ def verify_centro(cid):
     return jsonify(count=n, verified=verified)
 
 
+@app.post("/api/centros/<cid>/report")
+def report_centro(cid):
+    if not rate_limit("report", 30, 600):
+        return jsonify(error="rate"), 429
+    db = get_db()
+    if not db.execute("SELECT 1 FROM centros WHERE id=?", (cid,)).fetchone():
+        return jsonify(error="no_existe"), 404
+    data = request.get_json(silent=True) or {}
+    uid = clean_str(data.get("uid"), 40)
+    motivo = data.get("motivo") if data.get("motivo") in MOTIVOS else None
+    if not uid or not motivo:
+        return jsonify(error="datos"), 400
+    texto = clean_str(data.get("texto"), 240)
+    now = int(time.time() * 1000)
+    # Un reporte por dispositivo y centro; si reporta otra vez, se reemplaza.
+    db.execute("INSERT INTO reportes(centro_id, uid, motivo, texto, creado) VALUES(?,?,?,?,?) "
+               "ON CONFLICT(centro_id, uid) DO UPDATE SET motivo=excluded.motivo, "
+               "texto=excluded.texto, creado=excluded.creado",
+               (cid, uid, motivo, texto, now))
+    db.commit()
+    n = db.execute("SELECT COUNT(*) n FROM reportes WHERE centro_id=?", (cid,)).fetchone()["n"]
+    return jsonify(count=n)
+
+
 # --------------------------------------------------------------------------- #
 # API: administración
 # --------------------------------------------------------------------------- #
@@ -465,13 +499,31 @@ def admin_login():
 @app.get("/api/admin/centros")
 @require_admin
 def admin_list():
-    rows = get_db().execute("SELECT * FROM centros ORDER BY actualizado DESC").fetchall()
+    db = get_db()
+    rows = db.execute("SELECT * FROM centros ORDER BY actualizado DESC").fetchall()
     out = []
     for r in rows:
         d = centro_public(r)
         d["creado"] = r["creado"]
+        reps = db.execute("SELECT motivo, texto, creado FROM reportes WHERE centro_id=? "
+                          "ORDER BY creado DESC", (r["id"],)).fetchall()
+        d["reportes"] = len(reps)
+        d["reportes_detalle"] = [
+            {"motivo": x["motivo"], "texto": x["texto"] or "", "creado": x["creado"]} for x in reps
+        ]
         out.append(d)
+    # Centros con reportes primero, luego por actualización
+    out.sort(key=lambda c: (-(c["reportes"]), -c["actualizado"]))
     return jsonify(centros=out)
+
+
+@app.delete("/api/admin/centros/<cid>/reportes")
+@require_admin
+def admin_clear_reports(cid):
+    db = get_db()
+    db.execute("DELETE FROM reportes WHERE centro_id=?", (cid,))
+    db.commit()
+    return jsonify(ok=True)
 
 
 @app.delete("/api/admin/centros/<cid>")
