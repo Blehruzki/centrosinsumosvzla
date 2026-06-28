@@ -150,6 +150,32 @@
   .lightbox .lbnav{position:absolute; top:50%; transform:translateY(-50%); width:46px; height:64px; border:0;
     background:rgba(255,255,255,.12); color:#fff; font-size:34px; font-weight:800; cursor:pointer; border-radius:10px;}
   .lightbox .lbnav.prev{left:10px;} .lightbox .lbnav.next{right:10px;}
+  /* búsqueda */
+  .searchwrap{position:relative; margin:6px 0 10px;}
+  .searchbox{width:100%; box-sizing:border-box; border:1.5px solid var(--line); border-radius:12px;
+    padding:13px 40px 13px 14px; font:inherit; font-size:15px; background:var(--surface); color:var(--ink);}
+  .searchbox:focus{outline:none; border-color:var(--brand);}
+  .searchclear{position:absolute; top:50%; right:8px; transform:translateY(-50%); width:30px; height:30px;
+    border:0; border-radius:50%; background:var(--subtle); color:var(--muted); font-size:13px; font-weight:800; cursor:pointer;}
+  /* pie de página */
+  .footlinks{margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .footlink{appearance:none; border:0; background:none; cursor:pointer; padding:0; font:inherit;
+    font-size:12.5px; font-weight:700; color:var(--brand-ink); text-decoration:underline;}
+  .footsep{color:var(--muted);}
+  /* ayuda */
+  .helpsec{margin:18px 0; padding:16px; background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow);}
+  .helpsec h3{font-size:16px; margin:0 0 12px;}
+  .helpstep{display:flex; gap:10px; align-items:flex-start; margin-bottom:10px; font-size:14px; line-height:1.5;}
+  .helpstep .hn{flex:0 0 auto; width:22px; height:22px; border-radius:50%; background:var(--brand); color:#fff;
+    font-size:12.5px; font-weight:800; display:flex; align-items:center; justify-content:center; margin-top:1px;}
+  .helplist{font-size:14px; line-height:1.55;}
+  .faq{border-top:1px solid var(--line); padding:11px 0;}
+  .faq:first-of-type{border-top:0;}
+  .faq summary{cursor:pointer; font-size:14px; font-weight:700; color:var(--ink); list-style:none;}
+  .faq summary::-webkit-details-marker{display:none;}
+  .faq summary::before{content:"+"; display:inline-block; width:18px; color:var(--brand-ink); font-weight:800;}
+  .faq[open] summary::before{content:"–";}
+  .faqa{font-size:13.5px; line-height:1.55; color:var(--muted); margin:8px 0 2px 18px;}
   /* big status buttons */
   .status3{display:grid; gap:10px;}
   .sbtn{appearance:none; cursor:pointer; text-align:left; width:100%; border-radius:13px; padding:16px 16px;
@@ -236,6 +262,7 @@
   .map{border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:8px; margin-bottom:6px; background:var(--surface);}
   .map svg{width:100%; height:auto; display:block; border-radius:10px; background:#e7edf0;}
   .leafmap{height:240px; width:100%; border-radius:12px; overflow:hidden; border:1px solid var(--line); box-shadow:var(--shadow); margin-bottom:6px; z-index:0;}
+  .pickmap{height:260px; width:100%; border-radius:12px; overflow:hidden; border:1px solid var(--line); box-shadow:var(--shadow); z-index:0;}
   .leaflet-container{font:inherit;}
   .leaflet-popup-content{font-size:13px; font-weight:600;}
   .legend{display:flex; gap:14px; flex-wrap:wrap; font-size:11.5px; font-weight:700; color:var(--muted); padding:4px 4px 12px;}
@@ -390,7 +417,8 @@ let state = {
   codeError: "",
   savedCode: null,       // {nombre, codigo, pw} a mostrar tras registrar
   filterSupply: null,    // clave de insumo o null
-  filterTipo: null,      // "hospital" | "refugio" | null
+  filterTipo: null,      // "hospital" | "refugio" | "acopio" | null
+  searchText: "",        // texto libre de búsqueda (nombre, zona, nota, insumos)
   myLoc: null,           // ubicación del voluntario (en memoria)
   sortBy: "urgencia",    // "urgencia" | "cercania"
   showMap: false,
@@ -478,6 +506,48 @@ function fmtDist(km){ return km<1 ? Math.round(km*1000)+" m" : km.toFixed(km<10?
 function mapsLink(c){ return "https://www.google.com/maps/search/?api=1&query="+c.lat+","+c.lng; }
 
 // Control para fijar la ubicación de un centro (GPS o manual)
+// Mapa selector para marcar la ubicación tocando o arrastrando el pin.
+// Instancia propia y persistente (sobrevive a los redibujados, como el mapa de voluntarios).
+let _pickMap=null, _pickEl=null, _pickMarker=null, _pickFor=null;
+function pickerMap(c){
+  if(typeof L==="undefined") return null;
+  if(!_pickEl) _pickEl = el("div",{class:"pickmap"});
+  function setPunto(lat, lng){
+    c.lat = Math.round(lat*1e6)/1e6;
+    c.lng = Math.round(lng*1e6)/1e6;
+    render();
+  }
+  const key = c.id || "nuevo";
+  setTimeout(()=>{
+    try{
+      if(!_pickMap){
+        _pickMap = L.map(_pickEl, {zoomControl:true});
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          {maxZoom:19, attribution:"&copy; OpenStreetMap"}).addTo(_pickMap);
+        const start = (typeof c.lat==="number") ? [c.lat, c.lng] : [10.6545, -71.6125]; // Maracaibo aprox.
+        _pickMap.setView(start, (typeof c.lat==="number") ? 15 : 12);
+        _pickMap.on("click", ev=> setPunto(ev.latlng.lat, ev.latlng.lng));
+        _pickFor = key;
+      } else if(_pickFor !== key){
+        _pickFor = key;
+        if(typeof c.lat==="number") _pickMap.setView([c.lat, c.lng], 15);
+      }
+      _pickMap.invalidateSize();
+      if(typeof c.lat==="number"){
+        if(!_pickMarker){
+          _pickMarker = L.marker([c.lat, c.lng], {draggable:true}).addTo(_pickMap);
+          _pickMarker.on("dragend", ()=>{ const ll=_pickMarker.getLatLng(); setPunto(ll.lat, ll.lng); });
+        } else {
+          _pickMarker.setLatLng([c.lat, c.lng]);
+        }
+      } else if(_pickMarker){
+        _pickMap.removeLayer(_pickMarker); _pickMarker = null;
+      }
+    }catch(_){}
+  }, 30);
+  return _pickEl;
+}
+
 function locationCtrl(c){
   const has = (typeof c.lat==="number" && typeof c.lng==="number");
   const node = el("div",{});
@@ -485,10 +555,23 @@ function locationCtrl(c){
     el("span",{class:"lt"}, has ? ("Ubicación: "+c.lat.toFixed(4)+", "+c.lng.toFixed(4)) : "Sin ubicación marcada"),
     el("button",{class:"smallbtn", onclick:async(e)=>{
       const btn=e.currentTarget; btn.disabled=true; btn.textContent="Buscando…";
-      try{ const loc=await getLocation(); c.lat=loc.lat; c.lng=loc.lng; render(); toast("Ubicación capturada"); }
+      try{ const loc=await getLocation(); c.lat=loc.lat; c.lng=loc.lng; _pickFor=null; render(); toast("Ubicación capturada"); }
       catch(err){ state.locManual=true; render(); toast("GPS no disponible; ingrésala a mano"); }
     }}, has ? "Actualizar con GPS" : "Usar mi ubicación (GPS)")
   ));
+
+  // Mapa interactivo (método principal). Si Leaflet no carga, se usa el modo manual.
+  const pm = pickerMap(c);
+  if(pm){
+    node.appendChild(el("div",{class:"hint", style:"margin:8px 2px 6px"},
+      "Toca el mapa para marcar la ubicación, o arrastra el pin para ajustarla."));
+    node.appendChild(pm);
+  } else {
+    node.appendChild(el("div",{class:"hint", style:"margin:8px 2px 6px; color:var(--bajo)"},
+      "El mapa no cargó. Puedes ingresar las coordenadas a mano abajo."));
+    state.locManual = true;
+  }
+
   node.appendChild(el("button",{class:"linkbtn", style:"display:block; font-size:12.5px; padding-top:6px", onclick:()=>{ state.locManual=!state.locManual; render(); }},
     state.locManual ? "Ocultar coordenadas manuales" : "Ingresar coordenadas manualmente"));
   if(state.locManual){
@@ -498,6 +581,7 @@ function locationCtrl(c){
       oninput:e=>{ const v=parseFloat(e.target.value); if(isNaN(v)) delete c.lng; else c.lng=v; }});
     node.appendChild(el("div",{class:"field", style:"margin:8px 0 8px"}, la));
     node.appendChild(el("div",{class:"field", style:"margin-bottom:0"}, lo));
+    node.appendChild(el("button",{class:"smallbtn", style:"margin-top:8px", onclick:()=>{ _pickFor=null; render(); }}, "Aplicar coordenadas al mapa"));
   }
   if(has) node.appendChild(el("button",{class:"linkbtn", style:"display:block; font-size:12.5px; margin-top:4px", onclick:()=>{ delete c.lat; delete c.lng; render(); }}, "Quitar ubicación"));
   return node;
@@ -608,7 +692,7 @@ async function boot(){
   state.myVerif = store.myVerifSet();
   await refresh();
   render();
-  setInterval(()=>{ if(document.visibilityState==="visible" && state.screen==="voluntario" && !state.reportFor) refresh(); }, 8000);
+  setInterval(()=>{ if(document.visibilityState==="visible" && state.screen==="voluntario" && !state.reportFor && !state.coordFor && !state.searchText) refresh(); }, 8000);
 }
 
 /* ============================================================
@@ -659,28 +743,44 @@ function landing(){
 
 function footnote(){
   return el("div",{class:"footnote"},
-    "La información se comparte con todos los voluntarios. No incluyas datos personales sensibles."
+    el("div",{}, "La información se comparte con todos los voluntarios. No incluyas datos personales sensibles."),
+    el("div",{class:"footlinks"},
+      el("button",{class:"footlink", onclick:()=>{ state.screen="ayuda"; render(); }}, "¿Cómo funciona? · Ayuda"),
+      el("span",{class:"footsep"}, "·"),
+      el("a",{class:"footlink", href:"mailto:danielquintanasanz@gmail.com?subject=Centros%20de%20Insumos%20VZla"}, "Contacto")
+    )
   );
 }
 
 /* ----- Voluntario ----- */
+// Texto normalizado donde busca la barra: nombre, zona, nota e insumos (necesidades o disponibilidad).
+function searchHaystack(c){
+  const parts = [c.nombre, c.zona, c.nota];
+  (c.necesidades||[]).forEach(k=> parts.push(SUPPLY_LABEL[k]||k));
+  Object.keys(c.disponibilidad||{}).forEach(k=> parts.push(SUPPLY_LABEL[k]||k));
+  return norm(parts.filter(Boolean).join(" "));
+}
+
 function voluntario(){
   let list = state.centros.slice();
   if(state.demo) list = list.concat(DEMO);
   const counts = {urgente:0,bajo:0,suficiente:0};
   list.forEach(c=>{ if(c.tipo!=="acopio" && counts[c.estado]!==undefined) counts[c.estado]++; });
 
+  const q = norm(state.searchText||"");
   let view = list.filter(c=>{
     if(state.filterTipo && c.tipo!==state.filterTipo) return false;
     if(state.filterSupply){
       const k = state.filterSupply;
       if(c.tipo==="acopio"){
         const lvl = (c.disponibilidad||{})[k];
-        return !!lvl && lvl!=="agotado";   // lo tiene y no está agotado
+        if(!(lvl && lvl!=="agotado")) return false;   // lo tiene y no está agotado
+      } else {
+        if(c.estado==="suficiente") return false;
+        if(!(c.necesidades||[]).includes(k)) return false;
       }
-      if(c.estado==="suficiente") return false;
-      if(!(c.necesidades||[]).includes(k)) return false;
     }
+    if(q && !searchHaystack(c).includes(q)) return false;
     return true;
   });
   if(state.sortBy==="cercania" && state.myLoc){
@@ -705,6 +805,14 @@ function voluntario(){
     el("div",{class:"stat b"}, el("b",{},String(counts.bajo)), el("span",{},"Bajo")),
     el("div",{class:"stat s"}, el("b",{},String(counts.suficiente)), el("span",{},"Suficiente"))
   ));
+  // barra de búsqueda
+  const search = el("input",{class:"searchbox", type:"search", inputmode:"search", autocomplete:"off",
+    placeholder:"Buscar centro o insumo (p. ej. jeringas)", value:state.searchText||"",
+    oninput:e=>{ state.searchText=e.target.value; state._searchCaret=e.target.selectionStart; state._focusSearch=true; render(); }});
+  const searchWrap = el("div",{class:"searchwrap"}, search);
+  if(state.searchText) searchWrap.appendChild(el("button",{class:"searchclear","aria-label":"Limpiar búsqueda",
+    onclick:()=>{ state.searchText=""; render(); }}, "✕"));
+  main.appendChild(searchWrap);
   // filtros
   const chip=(label,active,onClick,variant)=>el("button",{class:"chip"+(variant?" "+variant:""),"aria-pressed":active?"true":"false", onclick:onClick},label);
   const filterRow = el("div",{class:"filters"});
@@ -736,12 +844,15 @@ function voluntario(){
   }
 
   if(view.length===0){
+    const hayBusqueda = !!(state.searchText || state.filterSupply || state.filterTipo);
     main.appendChild(el("div",{class:"empty"},
       el("div",{class:"big", html:"&#9737;"}),
-      el("h3",{}, list.length===0 ? "Todavía no hay centros" : "Nada coincide con el filtro"),
+      el("h3",{}, list.length===0 ? "Todavía no hay centros" : (state.searchText ? "Sin resultados para tu búsqueda" : "Nada coincide con el filtro")),
       el("p",{}, list.length===0
-        ? "Cuando un hospital o refugio marque su estado, aparecerá aquí."
-        : "Quita algún filtro para ver más centros."),
+        ? "Cuando un hospital, refugio o acopio marque su estado, aparecerá aquí."
+        : (state.searchText ? "Prueba con otra palabra, o revisa los filtros activos." : "Quita algún filtro para ver más centros.")),
+      hayBusqueda && el("div",{style:"margin-top:14px"},
+        el("button",{class:"btn ghost", style:"max-width:240px;margin:0 auto", onclick:()=>{state.searchText="";state.filterSupply=null;state.filterTipo=null;render();}}, "Limpiar búsqueda y filtros")),
       list.length===0 && !state.demo && el("div",{style:"margin-top:16px"},
         el("button",{class:"btn ghost", style:"max-width:240px;margin:0 auto", onclick:()=>{state.demo=true;render();}}, "Ver con datos de ejemplo"))
     ));
@@ -756,10 +867,18 @@ function voluntario(){
   }
   main.appendChild(footnote());
 
+  // Mantener el foco en la barra de búsqueda tras redibujar (no perder lo que se escribe)
+  if(state._focusSearch){
+    state._focusSearch = false;
+    const caret = state._searchCaret;
+    setTimeout(()=>{ const i=document.querySelector(".searchbox"); if(i){ i.focus();
+      if(caret!=null){ try{ i.setSelectionRange(caret, caret); }catch(_){} } } }, 0);
+  }
+
   return el("div",{class:"wrap"},
     topbar("Centros que necesitan insumos",
       (state.sortBy==="cercania" && state.myLoc) ? "Ordenado por cercanía a ti" : "Se actualiza solo · ordenado por urgencia",
-      ()=>{state.screen="landing";state.demo=false;state.filterSupply=null;state.filterTipo=null;render();}),
+      ()=>{state.screen="landing";state.demo=false;state.filterSupply=null;state.filterTipo=null;state.searchText="";render();}),
     main
   );
 }
@@ -1546,6 +1665,54 @@ function guardadoScreen(){
 
 /* ---------- Render raíz ---------- */
 let _lastScreen = null;
+/* ----- Ayuda / Cómo usar ----- */
+function ayudaScreen(){
+  const main = el("main",{});
+  const sec = (titulo, ...kids)=> main.appendChild(el("div",{class:"helpsec"}, el("h3",{}, titulo), ...kids));
+  const paso = (n, txt)=> el("div",{class:"helpstep"}, el("span",{class:"hn"}, String(n)), el("span",{}, txt));
+  const faq = (q, a)=> el("details",{class:"faq"}, el("summary",{}, q), el("div",{class:"faqa"}, a));
+
+  main.appendChild(el("div",{class:"lede", style:"padding-top:12px"},
+    el("h2",{style:"font-size:23px"}, "Cómo usar la app"),
+    el("p",{}, "Conecta a quien necesita insumos con quien los tiene durante la emergencia. No requiere instalar nada ni crear cuenta, y funciona desde el teléfono aunque la señal sea baja.")));
+
+  sec("Si eres un centro",
+    paso(1, "Toca “Soy un centro” y elige Hospital, Refugio o Centro de acopio."),
+    paso(2, "Hospital o refugio: marca tu estado (Suficiente, Bajo o Urgente) y qué insumos necesitas. Centro de acopio: marca qué insumos tienes disponibles y en qué nivel."),
+    paso(3, "Opcional pero recomendado: agrega tu ubicación, un teléfono de contacto y una contraseña para que solo tú puedas modificar tu centro."),
+    paso(4, "Guarda. Recibirás un código para volver a actualizar tu centro desde otro teléfono."));
+
+  sec("Si eres voluntario",
+    paso(1, "Toca “Soy voluntario” para ver el mapa y la lista de centros."),
+    paso(2, "Usa la barra de búsqueda para encontrar un centro por nombre o un insumo por palabra (por ejemplo “jeringas”)."),
+    paso(3, "Refina con los filtros: por tipo (hospitales, refugios, acopios) o por insumo."),
+    paso(4, "Usa “Cómo llegar” para la ruta, y ayuda a la comunidad verificando o reportando centros."),
+    paso(5, "En un centro de acopio, toca “Coordinar entrega” para contactarlo y acordar el envío."));
+
+  sec("Qué significan los colores y niveles",
+    el("div",{class:"helplist"},
+      el("div",{}, el("b",{style:"color:var(--urgente)"}, "Urgente"), " · ", el("b",{style:"color:var(--bajo)"}, "Bajo"), " · ", el("b",{style:"color:var(--suf)"}, "Suficiente"), " — estado de un hospital o refugio."),
+      el("div",{style:"margin-top:6px"}, el("b",{style:"color:#1b8a5a"}, "Mucho"), " / ", el("b",{style:"color:#e07b00"}, "Medio"), " / ", el("b",{style:"color:#c25e00"}, "Poco"), " — lo que tiene un acopio. ", el("b",{style:"color:var(--muted)"}, "Agotado"), " aparece en gris: ya no está disponible.")));
+
+  sec("Preguntas frecuentes",
+    faq("¿Necesito instalar algo o crear una cuenta?", "No. Funciona directamente en el navegador del teléfono o la computadora."),
+    faq("¿Tiene costo?", "No, el uso de la aplicación es gratuito."),
+    faq("Olvidé mi código o mi contraseña. ¿Qué hago?", "Escríbele al administrador usando el enlace de Contacto al final de la página. Puede recuperarte el código o restablecer tu contraseña."),
+    faq("¿Quién puede ver lo que publico?", "Todos los voluntarios que usan la app. Por eso no debes incluir datos personales sensibles."),
+    faq("¿Qué fotos puedo subir a un acopio?", "Solo fotos de los insumos. Evita rostros, documentos o direcciones visibles, por privacidad y seguridad. Se permiten hasta 3 fotos."),
+    faq("¿Cómo coordino una entrega con un centro de acopio?", "Abre su tarjeta y toca “Coordinar entrega”. Podrás llamar o escribir por WhatsApp, y abrir Yummy si necesitas un envío."),
+    faq("Vi un centro falso o duplicado. ¿Cómo lo reporto?", "En la tarjeta del centro toca “Reportar este centro”, elige el motivo y, si quieres, agrega un comentario. El administrador lo revisará."),
+    faq("¿Funciona con mala señal?", "Sí. La app está diseñada para consumir pocos datos y cargar incluso con conexión limitada."));
+
+  main.appendChild(footnote());
+
+  return el("div",{class:"wrap"},
+    topbar("Ayuda", "Cómo funciona y preguntas frecuentes",
+      ()=>{ state.screen="landing"; render(); }),
+    main
+  );
+}
+
 function render(){
   const root = document.getElementById("app");
   const y = window.scrollY;                 // recordar posición actual
@@ -1558,6 +1725,7 @@ function render(){
   else if(state.screen==="admin") node=adminScreen();
   else if(state.screen==="centro") node=centroForm();
   else if(state.screen==="guardado") node=guardadoScreen();
+  else if(state.screen==="ayuda") node=ayudaScreen();
   else node=landing();
   root.replaceWith(node);
   node.id="app";
