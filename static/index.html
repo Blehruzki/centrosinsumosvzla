@@ -194,6 +194,33 @@
   .miniarrow:disabled{opacity:.4; cursor:default;}
   .faqedit{padding:11px; border:1px solid var(--line); border-radius:11px; margin-bottom:10px; background:var(--subtle);}
   .faqedit .editta{margin-top:8px;}
+  /* banner informativo */
+  .banner{position:relative; display:flex; align-items:center; gap:10px; padding:11px 40px 11px 14px;
+    font-size:13.5px; font-weight:600; line-height:1.4; border-bottom:1px solid rgba(0,0,0,.06);}
+  .banner .bicon{flex:0 0 auto; width:22px; height:22px; border-radius:50%; display:flex; align-items:center;
+    justify-content:center; font-size:13px; font-weight:800; font-style:italic; background:rgba(0,0,0,.12);}
+  .banner .btxt{white-space:pre-line; flex:1 1 auto;}
+  .banner.b-info{background:#e6eff2; color:#0a5060;}
+  .banner.b-advertencia{background:#fff1dd; color:#8a5200;}
+  .banner.b-urgente{background:#fde2e0; color:#a01a13;}
+  .banner .bclose{position:absolute; top:50%; right:8px; transform:translateY(-50%); width:28px; height:28px;
+    border:0; background:rgba(0,0,0,.08); color:inherit; border-radius:50%; font-size:18px; font-weight:800; cursor:pointer; line-height:1;}
+  /* ícono flotante (banner replegado) */
+  .bannerfab{position:fixed; right:16px; bottom:16px; z-index:900; width:46px; height:46px; border-radius:50%;
+    border:0; cursor:pointer; font-size:20px; font-weight:800; font-style:italic; color:#fff;
+    box-shadow:0 4px 14px rgba(0,0,0,.28); display:flex; align-items:center; justify-content:center;}
+  .bannerfab.b-info{background:#0c6e84;}
+  .bannerfab.b-advertencia{background:#e07b00;}
+  .bannerfab.b-urgente{background:#d62828;}
+  @keyframes fabin{from{transform:scale(.6);opacity:0} to{transform:scale(1);opacity:1}}
+  .bannerfab{animation:fabin .15s ease-out;}
+  /* casilla (editor de banner) */
+  .checkrow{display:flex; gap:11px; align-items:flex-start; width:100%; text-align:left; appearance:none; cursor:pointer;
+    border:1px solid var(--line); background:var(--surface); border-radius:11px; padding:12px; margin-bottom:9px;}
+  .checkrow[aria-pressed="true"]{border-color:var(--brand);}
+  .checkrow .checkbox{flex:0 0 auto; width:22px; height:22px; border-radius:6px; border:2px solid var(--line);
+    display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; color:#fff; margin-top:1px;}
+  .checkrow[aria-pressed="true"] .checkbox{background:var(--brand); border-color:var(--brand);}
   /* big status buttons */
   .status3{display:grid; gap:10px;}
   .sbtn{appearance:none; cursor:pointer; text-align:left; width:100%; border-radius:13px; padding:16px 16px;
@@ -418,6 +445,8 @@ const store = {
   async getAyuda(){ const d=await api("/ayuda"); return d.ayuda; },
   async adminSaveAyuda(token, ayuda){ const d=await api("/admin/ayuda",{method:"PUT", headers:{Authorization:"Bearer "+token}, body:JSON.stringify({ayuda})}); return d.ayuda; },
   async adminResetAyuda(token){ const d=await api("/admin/ayuda",{method:"DELETE", headers:{Authorization:"Bearer "+token}}); return d.ayuda; },
+  async getBanner(){ const d=await api("/banner"); return d.banner; },
+  async adminSaveBanner(token, banner){ const d=await api("/admin/banner",{method:"PUT", headers:{Authorization:"Bearer "+token}, body:JSON.stringify({banner})}); return d.banner; },
 };
 
 /* ---------- Estado de la app ---------- */
@@ -442,6 +471,8 @@ let state = {
   searchText: "",        // texto libre de búsqueda (nombre, zona, nota, insumos)
   ayuda: null,           // contenido editable de la sección de ayuda (se carga del servidor)
   ayudaEdit: null,       // copia de trabajo mientras el admin edita la ayuda
+  banner: null,          // banner informativo (se carga del servidor)
+  bannerEdit: null,      // copia de trabajo mientras el admin edita el banner
   myLoc: null,           // ubicación del voluntario (en memoria)
   sortBy: "urgencia",    // "urgencia" | "cercania"
   showMap: false,
@@ -707,12 +738,14 @@ async function refresh(){
   }catch(err){
     state.loadError = err.offline ? "No hay conexión con el servidor." : "No se pudo cargar la información.";
   }
+  try{ const b = await store.getBanner(); if(b){ state.banner = b; } }catch(_){}
   if(state.screen==="voluntario" || state.screen==="elegir") render();
 }
 async function boot(){
   state.uid = store.getUid();
   state.myId = store.getMyId();
   state.myVerif = store.myVerifSet();
+  try{ state.banner = await store.getBanner(); }catch(_){}
   await refresh();
   render();
   setInterval(()=>{ if(document.visibilityState==="visible" && state.screen==="voluntario" && !state.reportFor && !state.coordFor && !state.searchText) refresh(); }, 8000);
@@ -773,6 +806,46 @@ function footnote(){
       el("a",{class:"footlink", href:"mailto:danielquintanasanz@gmail.com?subject=Centros%20de%20Insumos%20VZla"}, "Contacto")
     )
   );
+}
+
+// El banner está activo si tiene texto y está encendido.
+function bannerActive(){
+  const b = state.banner;
+  return !!(b && b.activo && b.texto);
+}
+// ¿Está replegado (a ícono) en esta versión? Solo aplica si es cerrable.
+function bannerCollapsed(){
+  const b = state.banner;
+  if(!b || !b.cerrable) return false;
+  const d = lsGet("banner-collapsed");
+  return d!==null && Number(d)===Number(b.version);
+}
+function collapseBanner(){ lsSet("banner-collapsed", String(state.banner.version)); render(); }
+function expandBanner(){ lsSet("banner-collapsed", null); render(); }
+
+// Símbolo según el tipo de aviso (consistente con el color).
+function bannerSimbolo(tipo){
+  if(tipo==="urgente" || tipo==="advertencia") return "!";
+  return "i";
+}
+
+function bannerEl(){
+  const b = state.banner;
+  const wrap = el("div",{class:"banner b-"+(b.tipo||"info")});
+  wrap.appendChild(el("span",{class:"bicon"}, bannerSimbolo(b.tipo)));
+  wrap.appendChild(el("span",{class:"btxt"}, b.texto));
+  if(b.cerrable){
+    wrap.appendChild(el("button",{class:"bclose","aria-label":"Replegar aviso", title:"Replegar",
+      onclick:collapseBanner}, "–"));
+  }
+  return wrap;
+}
+
+// Ícono flotante al que se repliega el banner; al tocarlo, se despliega de nuevo.
+function bannerFab(){
+  const b = state.banner;
+  return el("button",{class:"bannerfab b-"+(b.tipo||"info"), "aria-label":"Ver aviso", title:"Ver aviso",
+    onclick:expandBanner}, bannerSimbolo(b.tipo));
 }
 
 /* ----- Voluntario ----- */
@@ -1585,7 +1658,13 @@ function adminScreen(){
       try{ state.ayuda = await store.getAyuda(); }catch(_){}
       state.ayudaEdit = state.ayuda ? JSON.parse(JSON.stringify(state.ayuda)) : null;
       state.screen="adminAyuda"; render();
-    }}, "Editar sección de ayuda")
+    }}, "Editar sección de ayuda"),
+    el("button",{class:"smallbtn", onclick:async()=>{
+      try{ state.banner = await store.getBanner(); }catch(_){}
+      state.bannerEdit = state.banner ? JSON.parse(JSON.stringify(state.banner))
+        : {activo:false, texto:"", tipo:"info", cerrable:true, version:0};
+      state.screen="adminBanner"; render();
+    }}, "Banner informativo")
   ));
   if(!list.length){
     main.appendChild(el("div",{class:"empty"}, el("div",{class:"big", html:"&#9737;"}),
@@ -1850,6 +1929,71 @@ function adminAyudaScreen(){
   return el("div",{class:"wrap"}, topbar("Editar ayuda", "Cambios visibles para todos", volver), main);
 }
 
+/* ----- Editor del banner informativo (admin) ----- */
+function adminBannerScreen(){
+  if(!state.adminToken){ state.screen="admin"; return adminScreen(); }
+  const volver = ()=>{ state.screen="admin"; render(); };
+  const b = state.bannerEdit || {activo:false, texto:"", tipo:"info", cerrable:true, version:0};
+  const main = el("main",{});
+
+  main.appendChild(el("div",{class:"lede", style:"padding-top:12px"},
+    el("h2",{style:"font-size:22px"}, "Banner informativo"),
+    el("p",{}, "Muestra un aviso en la parte superior de la app para todos los usuarios.")));
+
+  // Vista previa
+  if(b.texto){
+    main.appendChild(el("div",{class:"helpsec", style:"padding:12px"},
+      el("div",{style:"font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px"}, "Vista previa"),
+      el("div",{class:"banner b-"+(b.tipo||"info"), style:"position:static;border-radius:10px"},
+        el("span",{class:"bicon"}, bannerSimbolo(b.tipo)),
+        el("span",{class:"btxt"}, b.texto),
+        b.cerrable ? el("span",{class:"bclose", style:"pointer-events:none"}, "–") : null)));
+  }
+
+  // Mensaje
+  const ta = el("textarea",{class:"editta", placeholder:"Mensaje del aviso (p. ej. Mantenimiento esta noche de 10 a 11pm)", maxlength:"280",
+    oninput:e=>{ b.texto=e.target.value; }});
+  ta.value = b.texto||"";
+  main.appendChild(el("div",{class:"helpsec"}, el("h3",{}, "Mensaje"), ta));
+
+  // Tipo / color
+  const tipos = [["info","Informativo"],["advertencia","Advertencia"],["urgente","Urgente"]];
+  const seg = el("div",{class:"seg seg3"});
+  tipos.forEach(([k,l])=> seg.appendChild(el("button",{"aria-pressed":b.tipo===k?"true":"false",
+    onclick:()=>{ b.tipo=k; render(); }}, l)));
+  main.appendChild(el("div",{class:"helpsec"}, el("h3",{}, "Tipo / color"), seg));
+
+  // Opciones
+  const opt = el("div",{class:"helpsec"});
+  opt.appendChild(el("h3",{}, "Opciones"));
+  const chk = (label, val, onToggle, hint)=>{
+    const row = el("button",{class:"checkrow", "aria-pressed":val?"true":"false", onclick:onToggle},
+      el("span",{class:"checkbox"}, val?"✓":""),
+      el("span",{}, el("div",{style:"font-weight:700;font-size:14px"}, label),
+        hint?el("div",{style:"font-size:12.5px;color:var(--muted);margin-top:2px"}, hint):null));
+    return row;
+  };
+  opt.appendChild(chk("Mostrar el banner", !!b.activo, ()=>{ b.activo=!b.activo; render(); },
+    "Si lo apagas, el texto se conserva pero no se muestra."));
+  opt.appendChild(chk("El usuario puede replegarlo", !!b.cerrable, ()=>{ b.cerrable=!b.cerrable; render(); },
+    "Si lo activas, el usuario puede replegar el banner a un ícono flotante y volver a abrirlo cuando quiera. Si cambias el mensaje, se muestra de nuevo."));
+  main.appendChild(opt);
+
+  // Acciones
+  main.appendChild(el("div",{class:"cta", style:"display:grid; gap:10px"},
+    el("button",{class:"btn", onclick:async()=>{
+      try{
+        state.banner = await store.adminSaveBanner(state.adminToken, b);
+        state.bannerEdit = JSON.parse(JSON.stringify(state.banner));
+        toast(state.banner.activo ? "Banner publicado" : "Banner guardado (oculto)"); volver();
+      }catch(err){ toast(err.status===401?"Sesión de admin expirada":"No se pudo guardar"); }
+    }}, "Guardar"),
+    el("button",{class:"smallbtn", onclick:volver}, "Cancelar")
+  ));
+
+  return el("div",{class:"wrap"}, topbar("Banner informativo", "Aviso superior para todos", volver), main);
+}
+
 function render(){
   const root = document.getElementById("app");
   const y = window.scrollY;                 // recordar posición actual
@@ -1864,7 +2008,15 @@ function render(){
   else if(state.screen==="guardado") node=guardadoScreen();
   else if(state.screen==="ayuda") node=ayudaScreen();
   else if(state.screen==="adminAyuda") node=adminAyudaScreen();
+  else if(state.screen==="adminBanner") node=adminBannerScreen();
   else node=landing();
+  // Banner informativo arriba de todo (excepto en las pantallas de edición del propio banner)
+  // Banner informativo (excepto en su propia pantalla de edición):
+  // desplegado arriba, o replegado como ícono flotante.
+  if(bannerActive() && state.screen!=="adminBanner"){
+    if(bannerCollapsed()) node.appendChild(bannerFab());
+    else node.insertBefore(bannerEl(), node.firstChild);
+  }
   root.replaceWith(node);
   node.id="app";
   _lastScreen = state.screen;

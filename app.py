@@ -395,6 +395,43 @@ def api_ayuda():
     return jsonify(ayuda=get_ayuda())
 
 
+# Banner informativo (editable desde el panel de admin).
+DEFAULT_BANNER = {"activo": False, "texto": "", "tipo": "info", "cerrable": True, "version": 0}
+BANNER_TIPOS = {"info", "advertencia", "urgente"}
+
+
+def get_banner():
+    raw = meta_get("banner")
+    if not raw:
+        return dict(DEFAULT_BANNER)
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else dict(DEFAULT_BANNER)
+    except Exception:
+        return dict(DEFAULT_BANNER)
+
+
+def sanitize_banner(data, anterior):
+    if not isinstance(data, dict):
+        data = {}
+    texto = clean_str(data.get("texto"), 280)
+    tipo = data.get("tipo") if data.get("tipo") in BANNER_TIPOS else "info"
+    activo = bool(data.get("activo")) and bool(texto)
+    cerrable = bool(data.get("cerrable"))
+    # La "versión" sube cuando cambia el mensaje o el tipo, para que reaparezca
+    # aunque el usuario lo haya cerrado antes.
+    prev = anterior or {}
+    version = int(prev.get("version", 0) or 0)
+    if texto != prev.get("texto", "") or tipo != prev.get("tipo", "info"):
+        version += 1
+    return {"activo": activo, "texto": texto, "tipo": tipo, "cerrable": cerrable, "version": version}
+
+
+@app.get("/api/banner")
+def api_banner():
+    return jsonify(banner=get_banner())
+
+
 # --------------------------------------------------------------------------- #
 # API: centros (público)
 # --------------------------------------------------------------------------- #
@@ -739,6 +776,15 @@ def admin_reset_ayuda():
     db.execute("DELETE FROM meta WHERE key=?", ("ayuda",))
     db.commit()
     return jsonify(ayuda=DEFAULT_AYUDA)
+
+
+@app.put("/api/admin/banner")
+@require_admin
+def admin_save_banner():
+    data = request.get_json(silent=True) or {}
+    contenido = sanitize_banner(data.get("banner") if "banner" in data else data, get_banner())
+    meta_set("banner", json.dumps(contenido, ensure_ascii=False))
+    return jsonify(banner=contenido)
 
 
 @app.get("/api/admin/centros")
