@@ -134,6 +134,10 @@ def init_db():
         necesita INTEGER NOT NULL DEFAULT 0,
         ofrece INTEGER NOT NULL DEFAULT 0,
         nota TEXT,
+        nota_necesita TEXT,
+        nota_ofrece TEXT,
+        fotos_necesita TEXT NOT NULL DEFAULT '[]',
+        fotos_ofrece TEXT NOT NULL DEFAULT '[]',
         lat REAL,
         lng REAL,
         codigo TEXT UNIQUE NOT NULL,
@@ -182,6 +186,18 @@ def init_db():
         # Rol según el tipo previo: hospitales/refugios necesitaban; acopios/particulares ofrecían
         db.execute("UPDATE centros SET necesita=1 WHERE tipo IN ('hospital','refugio')")
         db.execute("UPDATE centros SET ofrece=1 WHERE tipo IN ('acopio','particular')")
+    if "nota_necesita" not in cols:
+        db.execute("ALTER TABLE centros ADD COLUMN nota_necesita TEXT")
+        db.execute("ALTER TABLE centros ADD COLUMN nota_ofrece TEXT")
+        db.execute("ALTER TABLE centros ADD COLUMN fotos_necesita TEXT NOT NULL DEFAULT '[]'")
+        db.execute("ALTER TABLE centros ADD COLUMN fotos_ofrece TEXT NOT NULL DEFAULT '[]'")
+        # Repartir la nota y las fotos actuales al rol que corresponda
+        for r in db.execute("SELECT id, nota, fotos, necesita, ofrece FROM centros").fetchall():
+            rid, nota, fotos, nec, ofr = r[0], (r[1] or ""), (r[2] or "[]"), r[3], r[4]
+            if ofr and not nec:
+                db.execute("UPDATE centros SET nota_ofrece=?, fotos_ofrece=? WHERE id=?", (nota, fotos, rid))
+            else:   # necesita, o ambos, o ninguno: por defecto al lado de necesita
+                db.execute("UPDATE centros SET nota_necesita=?, fotos_necesita=? WHERE id=?", (nota, fotos, rid))
     db.commit()
     db.close()
 
@@ -297,6 +313,10 @@ def parse_coord(v, lo, hi):
     return None
 
 
+def _rowget(row, key, default=None):
+    return row[key] if key in row.keys() else default
+
+
 def centro_public(row, with_verif=True):
     d = {
         "id": row["id"], "nombre": row["nombre"], "tipo": row["tipo"],
@@ -305,15 +325,22 @@ def centro_public(row, with_verif=True):
         "disponibilidad": json.loads((row["disponibilidad"] if "disponibilidad" in row.keys() else "{}") or "{}"),
         "necesita": bool(row["necesita"]) if "necesita" in row.keys() else (row["tipo"] in ("hospital", "refugio")),
         "ofrece": bool(row["ofrece"]) if "ofrece" in row.keys() else (row["tipo"] in ("acopio", "particular")),
-        "nota": row["nota"] or "", "actualizado": row["actualizado"],
+        "notaNecesita": _rowget(row, "nota_necesita") or "",
+        "notaOfrece": _rowget(row, "nota_ofrece") or "",
+        "actualizado": row["actualizado"],
         "protegido": bool(row["pw_hash"]),
     }
-    try:
-        flist = json.loads((row["fotos"] if "fotos" in row.keys() else "[]") or "[]")
-    except Exception:
-        flist = []
+    # Nota combinada (compatibilidad con la API pública anterior)
+    d["nota"] = d["notaNecesita"] or d["notaOfrece"] or (_rowget(row, "nota") or "")
     v = str(row["actualizado"])
-    d["fotos"] = ["/api/fotos/" + f + "?v=" + v for f in flist if f]
+    def urls(raw):
+        try: lst = json.loads(raw or "[]")
+        except Exception: lst = []
+        return ["/api/fotos/" + f + "?v=" + v for f in lst if f]
+    d["fotosNecesita"] = urls(_rowget(row, "fotos_necesita", "[]"))
+    d["fotosOfrece"] = urls(_rowget(row, "fotos_ofrece", "[]"))
+    # Lista combinada (compatibilidad)
+    d["fotos"] = (d["fotosNecesita"] + d["fotosOfrece"]) or urls(_rowget(row, "fotos", "[]"))
     if row["lat"] is not None and row["lng"] is not None:
         d["lat"] = row["lat"]; d["lng"] = row["lng"]
     if with_verif:
@@ -541,6 +568,8 @@ def register_centro():
     codigo = unique_code(db)
     nec = (parse_necesidades(data.get("necesidades")) if (necesita and estado != "suficiente") else []) if necesita else []
     disp = parse_disponibilidad(data.get("disponibilidad")) if ofrece else {}
+    nota_nec = clean_str(data.get("notaNecesita"), 240) if necesita else ""
+    nota_ofr = clean_str(data.get("notaOfrece"), 240) if ofrece else ""
     lat = parse_coord(data.get("lat"), -90, 90)
     lng = parse_coord(data.get("lng"), -180, 180)
     pw = data.get("password") or ""
@@ -548,11 +577,12 @@ def register_centro():
     now = int(time.time() * 1000)
 
     db.execute("""INSERT INTO centros
-        (id,nombre,tipo,zona,contacto,estado,necesidades,disponibilidad,necesita,ofrece,nota,lat,lng,codigo,pw_hash,actualizado,creado)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (id,nombre,tipo,zona,contacto,estado,necesidades,disponibilidad,necesita,ofrece,
+         nota,nota_necesita,nota_ofrece,fotos_necesita,fotos_ofrece,lat,lng,codigo,pw_hash,actualizado,creado)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (cid, nombre, tipo, clean_str(data.get("zona"), 60), clean_str(data.get("contacto"), 40),
          estado, json.dumps(nec), json.dumps(disp), 1 if necesita else 0, 1 if ofrece else 0,
-         clean_str(data.get("nota"), 240), lat, lng, codigo, pw_hash, now, now))
+         "", nota_nec, nota_ofr, "[]", "[]", lat, lng, codigo, pw_hash, now, now))
     db.commit()
 
     row = db.execute("SELECT * FROM centros WHERE id=?", (cid,)).fetchone()
@@ -628,7 +658,14 @@ def update_centro(cid):
             disp = {}
     zona = clean_str(data.get("zona", row["zona"]), 60)
     contacto = clean_str(data.get("contacto", row["contacto"]), 40)
-    nota = clean_str(data.get("nota", row["nota"]), 240)
+    # Notas por rol: si vienen se usan; si no, se conservan. Se vacía la del rol desactivado.
+    nota_nec = clean_str(data.get("notaNecesita"), 240) if "notaNecesita" in data else (_rowget(row, "nota_necesita") or "")
+    nota_ofr = clean_str(data.get("notaOfrece"), 240) if "notaOfrece" in data else (_rowget(row, "nota_ofrece") or "")
+    if not necesita: nota_nec = ""
+    if not ofrece: nota_ofr = ""
+    # Fotos por rol: se conservan; se vacían las del rol desactivado (los archivos se limpian aparte si hace falta)
+    fotos_nec = _rowget(row, "fotos_necesita", "[]") if necesita else "[]"
+    fotos_ofr = _rowget(row, "fotos_ofrece", "[]") if ofrece else "[]"
 
     lat, lng = row["lat"], row["lng"]
     if "lat" in data or "lng" in data:
@@ -644,9 +681,11 @@ def update_centro(cid):
 
     now = int(time.time() * 1000)
     db.execute("""UPDATE centros SET nombre=?,tipo=?,zona=?,contacto=?,estado=?,
-        necesidades=?,disponibilidad=?,necesita=?,ofrece=?,nota=?,lat=?,lng=?,pw_hash=?,actualizado=? WHERE id=?""",
+        necesidades=?,disponibilidad=?,necesita=?,ofrece=?,nota_necesita=?,nota_ofrece=?,
+        fotos_necesita=?,fotos_ofrece=?,lat=?,lng=?,pw_hash=?,actualizado=? WHERE id=?""",
         (nombre, tipo, zona, contacto, estado, json.dumps(nec), json.dumps(disp),
-         1 if necesita else 0, 1 if ofrece else 0, nota, lat, lng, pw_hash, now, cid))
+         1 if necesita else 0, 1 if ofrece else 0, nota_nec, nota_ofr,
+         fotos_nec, fotos_ofr, lat, lng, pw_hash, now, cid))
     db.commit()
     row = db.execute("SELECT * FROM centros WHERE id=?", (cid,)).fetchone()
     return jsonify(centro=centro_public(row))
@@ -663,14 +702,16 @@ def upload_foto(cid):
     if not auth_centro(cid):
         return jsonify(error="no_autorizado"), 401
 
+    data = request.get_json(silent=True) or {}
+    rol = data.get("rol") if data.get("rol") in ("necesita", "ofrece") else "necesita"
+    col = "fotos_necesita" if rol == "necesita" else "fotos_ofrece"
     try:
-        fotos = json.loads((row["fotos"] if "fotos" in row.keys() else "[]") or "[]")
+        fotos = json.loads((_rowget(row, col, "[]")) or "[]")
     except Exception:
         fotos = []
     if len(fotos) >= FOTO_MAX_N:
         return jsonify(error="limite", max=FOTO_MAX_N), 409
 
-    data = request.get_json(silent=True) or {}
     raw = data.get("imagen") or ""
     mime = data.get("mime")
     if isinstance(raw, str) and raw.startswith("data:"):
@@ -694,7 +735,7 @@ def upload_foto(cid):
         f.write(blob)
     fotos.append(fname)
     now = int(time.time() * 1000)
-    db.execute("UPDATE centros SET fotos=?, actualizado=? WHERE id=?", (json.dumps(fotos), now, cid))
+    db.execute("UPDATE centros SET " + col + "=?, actualizado=? WHERE id=?", (json.dumps(fotos), now, cid))
     db.commit()
     row = db.execute("SELECT * FROM centros WHERE id=?", (cid,)).fetchone()
     return jsonify(centro=centro_public(row))
@@ -708,20 +749,25 @@ def delete_foto(cid, fname):
         return jsonify(error="no_existe"), 404
     if not auth_centro(cid):
         return jsonify(error="no_autorizado"), 401
-    try:
-        fotos = json.loads((row["fotos"] if "fotos" in row.keys() else "[]") or "[]")
-    except Exception:
-        fotos = []
-    # Solo se puede borrar una foto que de verdad pertenece a este centro
-    if fname not in fotos:
+    # Buscar la foto en cualquiera de los dos rol-buckets
+    target_col = None
+    for col in ("fotos_necesita", "fotos_ofrece"):
+        try:
+            lst = json.loads((_rowget(row, col, "[]")) or "[]")
+        except Exception:
+            lst = []
+        if fname in lst:
+            target_col = col
+            fotos = [f for f in lst if f != fname]
+            break
+    if target_col is None:
         return jsonify(error="no_existe"), 404
-    fotos = [f for f in fotos if f != fname]
     p = os.path.join(FOTOS_DIR, fname)
     if os.path.exists(p):
         try: os.remove(p)
         except OSError: pass
     now = int(time.time() * 1000)
-    db.execute("UPDATE centros SET fotos=?, actualizado=? WHERE id=?", (json.dumps(fotos), now, cid))
+    db.execute("UPDATE centros SET " + target_col + "=?, actualizado=? WHERE id=?", (json.dumps(fotos), now, cid))
     db.commit()
     row = db.execute("SELECT * FROM centros WHERE id=?", (cid,)).fetchone()
     return jsonify(centro=centro_public(row))

@@ -77,30 +77,43 @@
   .rail.particular{background:#6b46c1}
   .rail.ofrece{background:#0c6e84}
   /* secciones de rol (formulario) */
-  .rolehead{width:100%; display:flex; align-items:center; gap:11px; text-align:left; appearance:none; cursor:pointer;
-    background:var(--surface); border:1.5px solid var(--line); border-radius:12px; padding:13px 14px; margin-bottom:10px;}
-  .rolehead .rolecheck{flex:0 0 auto; width:22px; height:22px; border-radius:6px; border:2px solid var(--line);
-    display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; color:#fff;}
+  .rolehead{width:100%; display:flex; align-items:center; gap:10px; text-align:left; appearance:none; cursor:pointer;
+    border:1.5px solid var(--line); border-radius:12px; padding:13px 14px; margin-bottom:10px;}
+  .rolehead .roleico{flex:0 0 auto; font-size:18px; line-height:1;}
+  .rolehead .rolecheck{flex:0 0 auto; width:22px; height:22px; border-radius:6px; border:2px solid currentColor;
+    display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; opacity:.5;}
   .rolehead .roletext{flex:1; min-width:0;}
   .rolehead .roletext b{display:block; font-size:14.5px; font-weight:800;}
   .rolehead .roletext small{display:block; font-size:12px; color:var(--muted); margin-top:1px;}
   .rolehead .rolechev{flex:0 0 auto; font-size:11px; color:var(--muted);}
+  /* cerrado: color de identidad tenue (no gris) */
+  .rolehead.need{border-color:#f1b8b4; background:#fdf2f1; color:#a01a13;}
+  .rolehead.give{border-color:#bcd9e1; background:#eef6f8; color:#0a5566;}
   .rolehead.need.open{border-color:#e3645c; background:#fdeceb;}
-  .rolehead.need.open .rolecheck{background:#d62828; border-color:#d62828;}
-  .rolehead.give.open{border-color:#7aa7b3; background:#e9f3f6;}
-  .rolehead.give.open .rolecheck{background:#0c6e84; border-color:#0c6e84;}
+  .rolehead.give.open{border-color:#7aa7b3; background:#e4f1f4;}
+  .rolehead.need.open .rolecheck{opacity:1; background:#d62828; border-color:#d62828; color:#fff;}
+  .rolehead.give.open .rolecheck{opacity:1; background:#0c6e84; border-color:#0c6e84; color:#fff;}
   .rolebody{border:1.5px solid var(--line); border-top:0; border-radius:0 0 12px 12px; padding:12px 13px; margin:-16px 0 14px;}
   .rolebody.need{border-color:#f1b8b4;}
   .rolebody.give{border-color:#bcd9e1;}
-  /* bloques de rol (tarjeta) */
-  .rblock{margin-top:10px; padding:9px 11px; border-radius:10px;}
-  .rblock.need{background:#fdeceb;}
-  .rblock.give{background:#e9f3f6;}
-  .rblabel{font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;}
-  .rblabel.need{color:#a01a13;}
-  .rblabel.give{color:#0a5566;}
-  .rblock.need .need{background:var(--surface); color:#a01a13;}
-  .rblock .needs{margin-top:0;}
+  /* secciones plegables (tarjeta del voluntario) */
+  .csec{margin-top:9px; border-radius:10px; overflow:hidden; border:0.5px solid transparent;}
+  .csec-head{width:100%; display:flex; align-items:center; gap:9px; padding:9px 11px; text-align:left; appearance:none; cursor:pointer; border:0; background:transparent; font:inherit;}
+  .csec-ico{flex:0 0 auto; font-size:16px; line-height:1;}
+  .csec-lbl{flex:1; min-width:0; font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .csec-chev{flex:0 0 auto; font-size:10px; opacity:.7;}
+  .csec-body{padding:0 11px 11px;}
+  .csec.need.suficiente{background:#eaf5ee; border-color:#bfe0cb;} .csec.need.suficiente .csec-head{color:#1b6b43;}
+  .csec.need.bajo{background:#fff3df; border-color:#f3d9a8;} .csec.need.bajo .csec-head{color:#8a5200;}
+  .csec.need.urgente{background:#fdeceb; border-color:#f1b8b4;} .csec.need.urgente .csec-head{color:#a01a13;}
+  .csec.need.urgente .need{background:var(--surface); color:#a01a13;}
+  .csec.give{background:#e9f3f6; border-color:#bcd9e1;} .csec.give .csec-head{color:#0a5566;}
+  /* selector de rol */
+  .rolseg{display:flex; gap:5px; background:var(--subtle); border:1px solid var(--line); border-radius:11px; padding:4px; margin-bottom:12px;}
+  .rolseg-b{flex:1; display:flex; align-items:center; justify-content:center; gap:5px; padding:8px 0; border:0; background:transparent;
+    border-radius:8px; font:inherit; font-size:13px; color:var(--muted); cursor:pointer;}
+  .rolseg-b .rolseg-ico{font-size:14px; line-height:1;}
+  .rolseg-b.on{background:var(--surface); color:var(--ink); font-weight:700; box-shadow:0 1px 3px rgba(0,0,0,.1);}
   .card .body{padding:14px 15px; flex:1; min-width:0;}
   .card .top{display:flex; align-items:flex-start; gap:10px;}
   .card .name{font-size:16.5px; font-weight:800; letter-spacing:-.01em; word-break:break-word;}
@@ -397,7 +410,7 @@ const MOTIVOS = [["no_existe","No existe"],["duplicado","Duplicado"],["falso","F
 const MOTIVO_LABEL = Object.fromEntries(MOTIVOS);
 
 const STATUS = {
-  suficiente: {label:"Suficiente", desc:"No necesita reabastecimiento ahora", order:2},
+  suficiente: {label:"Abastecido", desc:"No necesita reabastecimiento ahora", order:2},
   bajo:       {label:"Bajo",       desc:"Le queda poco, conviene reabastecer", order:1},
   urgente:    {label:"Urgente",    desc:"Necesita insumos lo antes posible",   order:0},
 };
@@ -450,9 +463,9 @@ const store = {
     const t=tokFor(c.id);
     return await api("/centros/"+c.id,{method:"PUT", headers:{Authorization:"Bearer "+t}, body:JSON.stringify(c)});
   },
-  async subirFoto(id, dataUrl){
+  async subirFoto(id, dataUrl, rol){
     const t=tokFor(id);
-    return await api("/centros/"+id+"/foto",{method:"POST", headers:{Authorization:"Bearer "+t}, body:JSON.stringify({imagen:dataUrl})});
+    return await api("/centros/"+id+"/foto",{method:"POST", headers:{Authorization:"Bearer "+t}, body:JSON.stringify({imagen:dataUrl, rol:rol||"necesita"})});
   },
   async borrarFoto(id, fname){
     const t=tokFor(id);
@@ -510,6 +523,8 @@ let state = {
   savedCode: null,       // {nombre, codigo, pw} a mostrar tras registrar
   filterSupply: null,    // clave de insumo o null
   filterTipo: null,      // "hospital" | "refugio" | "acopio" | null
+  filterRol: "todos",    // filtro por rol: "todos" | "necesita" | "ofrece"
+  cardExp: {},           // secciones de tarjeta expandidas, clave "id:nec" / "id:ofr"
   searchText: "",        // texto libre de búsqueda (nombre, zona, nota, insumos)
   ayuda: null,           // contenido editable de la sección de ayuda (se carga del servidor)
   ayudaEdit: null,       // copia de trabajo mientras el admin edita la ayuda
@@ -536,12 +551,14 @@ let state = {
 const DEMO = [
   {id:"d1", nombre:"Hospital Central", tipo:"hospital", zona:"Centro, Maracaibo", estado:"urgente", lat:10.6545, lng:-71.6125,
    necesita:true, ofrece:true, necesidades:["medicamentos","curacion","agua"], disponibilidad:{abrigo:"mucho"},
-   nota:"Quirófano sin suero. Tenemos mantas de sobra.", contacto:"0414-1112233", actualizado:Date.now()-1000*60*22, demo:true},
+   notaNecesita:"Quirófano sin suero. Prioridad analgésicos.", notaOfrece:"Tenemos mantas de sobra para donar.",
+   contacto:"0414-1112233", actualizado:Date.now()-1000*60*22, demo:true},
   {id:"d2", nombre:"Refugio Escuela Bolívar", tipo:"refugio", zona:"Sur, El Carmen", estado:"bajo", lat:10.6201, lng:-71.6388,
-   necesita:true, ofrece:false, necesidades:["agua","alimentos","abrigo"], disponibilidad:{}, nota:"", contacto:"", actualizado:Date.now()-1000*60*60*3, demo:true},
+   necesita:true, ofrece:false, necesidades:["agua","alimentos","abrigo"], disponibilidad:{},
+   notaNecesita:"", notaOfrece:"", contacto:"", actualizado:Date.now()-1000*60*60*3, demo:true},
   {id:"d3", nombre:"Acopio Vecinal Norte", tipo:"acopio", zona:"Norte", estado:"suficiente", lat:10.7012, lng:-71.6050,
    necesita:false, ofrece:true, necesidades:[], disponibilidad:{agua:"mucho", alimentos:"medio", materiales:"poco"},
-   nota:"Recibimos y entregamos de 8am a 5pm.", contacto:"0426-9988776", actualizado:Date.now()-1000*60*48, demo:true},
+   notaNecesita:"", notaOfrece:"Recibimos y entregamos de 8am a 5pm.", contacto:"0426-9988776", actualizado:Date.now()-1000*60*48, demo:true},
 ];
 
 /* ---------- Utilidades ---------- */
@@ -721,7 +738,7 @@ function miniMap(centros){
     const ofreceCol = c.tipo==="particular" ? "#6b46c1" : "#0c6e84";
     const fill = c.necesita ? (col[c.estado]||"#888") : ofreceCol;
     const partes = [];
-    if(c.necesita) partes.push("Necesita · "+(STATUS[c.estado]?STATUS[c.estado].label:""));
+    if(c.necesita) partes.push(c.estado==="suficiente" ? "Abastecido" : ("Necesita · "+(STATUS[c.estado]?STATUS[c.estado].label:"")));
     if(c.ofrece) partes.push("Ofrece");
     const etiqueta = (partes.join(" · ")||tipoLabelOf(c.tipo));
     L.circleMarker([c.lat,c.lng], {radius:8, color:"#fff", weight:2,
@@ -745,7 +762,7 @@ function miniMap(centros){
   _legendEl.innerHTML =
     '<span><i style="background:#d62828"></i>Urgente</span>'+
     '<span><i style="background:#e07b00"></i>Bajo</span>'+
-    '<span><i style="background:#1b8a5a"></i>Suficiente</span>'+
+    '<span><i style="background:#1b8a5a"></i>Abastecido</span>'+
     (state.myLoc?'<span><i style="background:#0c6e84"></i>Tú</span>':'');
   // Recalcular tamaño una vez que el nodo ya está en pantalla
   setTimeout(()=>{ try{ _map.invalidateSize(); }catch(_){ } }, 30);
@@ -760,14 +777,22 @@ function entrarCentro(){
 }
 function nuevoCentro(){
   state.editing = {id:null, nombre:"", tipo:"hospital", zona:"", estado:"", necesidades:[], disponibilidad:{},
-    necesita:false, ofrece:false, _fotosPend:[], nota:"", contacto:""};
+    necesita:false, ofrece:false, notaNecesita:"", notaOfrece:"",
+    fotosNecesita:[], fotosOfrece:[], _fotosPendNec:[], _fotosPendOfr:[], contacto:""};
   state.editIdentity = true;
   state.dupMatch = null;
   state.screen = "centro";
   render();
 }
 function abrirCentro(c){
-  state.editing = JSON.parse(JSON.stringify(c));
+  const e = JSON.parse(JSON.stringify(c));
+  if(!Array.isArray(e.fotosNecesita)) e.fotosNecesita = [];
+  if(!Array.isArray(e.fotosOfrece)) e.fotosOfrece = [];
+  if(!Array.isArray(e.necesidades)) e.necesidades = [];
+  if(!e.disponibilidad) e.disponibilidad = {};
+  if(typeof e.notaNecesita!=="string") e.notaNecesita = "";
+  if(typeof e.notaOfrece!=="string") e.notaOfrece = "";
+  state.editing = e;
   state.editIdentity = false;
   state.dupMatch = null;
   state.screen = "centro";
@@ -938,11 +963,17 @@ function computeView(list){
   const q = norm(state.searchText||"");
   let view = list.filter(c=>{
     if(state.filterTipo && c.tipo!==state.filterTipo) return false;
+    if(state.filterRol==="necesita" && !c.necesita) return false;
+    if(state.filterRol==="ofrece" && !c.ofrece) return false;
     if(state.filterSupply){
       const k = state.filterSupply;
       const tieneOfrecido = c.ofrece && (c.disponibilidad||{})[k] && c.disponibilidad[k]!=="agotado";
       const loNecesita = c.necesita && c.estado!=="suficiente" && (c.necesidades||[]).includes(k);
-      if(!(tieneOfrecido || loNecesita)) return false;
+      let ok;
+      if(state.filterRol==="necesita") ok = loNecesita;
+      else if(state.filterRol==="ofrece") ok = tieneOfrecido;
+      else ok = tieneOfrecido || loNecesita;
+      if(!ok) return false;
     }
     if(q && !searchHaystack(c).includes(q)) return false;
     return true;
@@ -975,7 +1006,7 @@ function voluntario(){
   main.appendChild(el("div",{class:"semaforo"},
     el("div",{class:"stat u"}, el("b",{},String(counts.urgente)), el("span",{},"Urgente")),
     el("div",{class:"stat b"}, el("b",{},String(counts.bajo)), el("span",{},"Bajo")),
-    el("div",{class:"stat s"}, el("b",{},String(counts.suficiente)), el("span",{},"Suficiente"))
+    el("div",{class:"stat s"}, el("b",{},String(counts.suficiente)), el("span",{},"Abastecido"))
   ));
 
   // barra de búsqueda — actualiza solo los resultados, sin recrear el campo (no recarga el teclado)
@@ -991,6 +1022,16 @@ function voluntario(){
   }
   syncClear();
   main.appendChild(searchWrap);
+
+  // Selector de rol: Todos / Necesitan / Ofrecen
+  const rolSeg = el("div",{class:"rolseg"});
+  const rolBtn = (val, label, ico)=> el("button",{class:"rolseg-b"+(state.filterRol===val?" on":""),
+    onclick:()=>{ state.filterRol=val; render(); }},
+    ico?el("span",{class:"rolseg-ico", html:ico}):null, label);
+  rolSeg.appendChild(rolBtn("todos","Todos", null));
+  rolSeg.appendChild(rolBtn("necesita","Necesitan","&#9745;"));
+  rolSeg.appendChild(rolBtn("ofrece","Ofrecen","&#127873;"));
+  main.appendChild(rolSeg);
 
   // filtros (los toques sí redibujan: no afectan al teclado)
   const chip=(label,active,onClick,variant)=>el("button",{class:"chip"+(variant?" "+variant:""),"aria-pressed":active?"true":"false", onclick:onClick},label);
@@ -1035,7 +1076,7 @@ function voluntario(){
           ? "Cuando un hospital, refugio o acopio marque su estado, aparecerá aquí."
           : (state.searchText ? "Prueba con otra palabra, o revisa los filtros activos." : "Quita algún filtro para ver más centros.")),
         hayBusqueda && el("div",{style:"margin-top:14px"},
-          el("button",{class:"btn ghost", style:"max-width:240px;margin:0 auto", onclick:()=>{state.searchText="";state.filterSupply=null;state.filterTipo=null;render();}}, "Limpiar búsqueda y filtros")),
+          el("button",{class:"btn ghost", style:"max-width:240px;margin:0 auto", onclick:()=>{state.searchText="";state.filterSupply=null;state.filterTipo=null;state.filterRol="todos";render();}}, "Limpiar búsqueda y filtros")),
         list.length===0 && !state.demo && el("div",{style:"margin-top:16px"},
           el("button",{class:"btn ghost", style:"max-width:240px;margin:0 auto", onclick:()=>{state.demo=true;render();}}, "Ver con datos de ejemplo"))
       ));
@@ -1056,7 +1097,7 @@ function voluntario(){
   return el("div",{class:"wrap"},
     topbar("Centros que necesitan insumos",
       (state.sortBy==="cercania" && state.myLoc) ? "Ordenado por cercanía a ti" : "Se actualiza solo · ordenado por urgencia",
-      ()=>{state.screen="landing";state.demo=false;state.filterSupply=null;state.filterTipo=null;state.searchText="";render();}),
+      ()=>{state.screen="landing";state.demo=false;state.filterSupply=null;state.filterTipo=null;state.filterRol="todos";state.searchText="";render();}),
     main
   );
 }
@@ -1078,50 +1119,87 @@ function facilityCard(c){
     )
   );
 
-  // Bloque: lo que NECESITA
+  // Resumen inline de insumos para la cabecera ("Agua · Medicamentos +2")
+  const resumen = (labels)=>{
+    const max = 3;
+    const shown = labels.slice(0, max).join(" · ");
+    const extra = labels.length - max;
+    return shown + (extra>0 ? (" +"+extra) : "");
+  };
+  // Sección plegable de rol dentro de la tarjeta
+  const seccion = (rol, claseColor, icono, cabecera, contenido, abrible)=>{
+    const key = c.id+":"+(rol==="necesita"?"nec":"ofr");
+    const abierto = !!state.cardExp[key];
+    const wrap = el("div",{class:"csec "+claseColor+(abierto?" open":"")});
+    const head = el("button",{class:"csec-head", "aria-expanded":abierto?"true":"false",
+      onclick: abrible ? ()=>{ if(state.cardExp[key]) delete state.cardExp[key]; else state.cardExp[key]=true; render(); } : null},
+      el("span",{class:"csec-ico", html:icono}),
+      el("span",{class:"csec-lbl"}, cabecera),
+      abrible ? el("span",{class:"csec-chev", html: abierto?"&#9652;":"&#9662;"}) : null
+    );
+    wrap.appendChild(head);
+    if(abierto && abrible){
+      const bd = el("div",{class:"csec-body"});
+      contenido(bd);
+      wrap.appendChild(bd);
+    }
+    return wrap;
+  };
+
+  // --- Sección NECESITA ---
   if(c.necesita){
-    const blk = el("div",{class:"rblock need "+c.estado});
-    blk.appendChild(el("div",{class:"rblabel need"}, "Necesita · "+st.label));
-    if(c.estado!=="suficiente" && (c.necesidades||[]).length){
-      const needs = el("div",{class:"needs"});
-      c.necesidades.forEach(k=> needs.appendChild(el("span",{class:"need"}, SUPPLY_LABEL[k]||k)));
-      blk.appendChild(needs);
-    }
-    body.appendChild(blk);
+    const items = (c.estado!=="suficiente") ? (c.necesidades||[]).map(k=>SUPPLY_LABEL[k]||k) : [];
+    const cabecera = (c.estado==="suficiente")
+      ? "Abastecido"
+      : (items.length ? ("Necesita: "+resumen(items)) : "Necesita reabastecer");
+    const fotos = c.fotosNecesita||[];
+    const nota = c.notaNecesita||"";
+    const hayDetalle = items.length>0 || !!nota || fotos.length>0;
+    body.appendChild(seccion("necesita", "need "+c.estado, "&#9745;", cabecera, (bd)=>{
+      if(items.length){
+        const needs = el("div",{class:"needs"});
+        (c.necesidades||[]).forEach(k=> needs.appendChild(el("span",{class:"need"}, SUPPLY_LABEL[k]||k)));
+        bd.appendChild(needs);
+      }
+      if(nota) bd.appendChild(el("div",{class:"note"}, nota));
+      if(fotos.length){
+        const g = el("div",{class:"cardfotos"});
+        fotos.forEach((url, idx)=> g.appendChild(el("img",{src:url, alt:"Foto", loading:"lazy", onclick:()=>abrirLightbox(fotos, idx)})));
+        bd.appendChild(g);
+      }
+      if(!hayDetalle) bd.appendChild(el("div",{class:"meta"}, "Sin notas ni fotos."));
+    }, hayDetalle));
   }
 
-  // Bloque: lo que OFRECE
+  // --- Sección OFRECE ---
   if(c.ofrece){
-    const blk = el("div",{class:"rblock give"});
-    blk.appendChild(el("div",{class:"rblabel give"}, "Ofrece"));
     const entries = Object.entries(c.disponibilidad||{});
-    if(entries.length){
-      entries.sort((a,b)=> (a[1]==="agotado"?1:0)-(b[1]==="agotado"?1:0));
-      const stock = el("div",{class:"stock"});
-      entries.forEach(([k,nv])=>{
-        const it = el("span",{class:"stockit"+(nv==="agotado"?" agotado":""),
-          style: nv==="agotado" ? "" : ("border-color:"+(NIVEL_COL[nv]||"#ccc"))},
-          SUPPLY_LABEL[k]||k,
-          el("span",{class:"nv", style:"color:"+(NIVEL_COL[nv]||"#888")}, NIVEL_LABEL[nv]||nv));
-        stock.appendChild(it);
-      });
-      blk.appendChild(stock);
-    } else {
-      blk.appendChild(el("div",{class:"meta", style:"margin-top:4px"}, "Aún no indicó qué tiene."));
-    }
-    body.appendChild(blk);
+    entries.sort((a,b)=> (a[1]==="agotado"?1:0)-(b[1]==="agotado"?1:0));
+    const dispoLabels = entries.filter(([,nv])=>nv!=="agotado").map(([k])=>SUPPLY_LABEL[k]||k);
+    const cabecera = dispoLabels.length ? ("Ofrece: "+resumen(dispoLabels)) : "Ofrece insumos";
+    const fotos = c.fotosOfrece||[];
+    const nota = c.notaOfrece||"";
+    body.appendChild(seccion("ofrece", "give", "&#127873;", cabecera, (bd)=>{
+      if(entries.length){
+        const stock = el("div",{class:"stock"});
+        entries.forEach(([k,nv])=>{
+          stock.appendChild(el("span",{class:"stockit"+(nv==="agotado"?" agotado":""),
+            style: nv==="agotado" ? "" : ("border-color:"+(NIVEL_COL[nv]||"#ccc"))},
+            SUPPLY_LABEL[k]||k,
+            el("span",{class:"nv", style:"color:"+(NIVEL_COL[nv]||"#888")}, NIVEL_LABEL[nv]||nv)));
+        });
+        bd.appendChild(stock);
+      } else {
+        bd.appendChild(el("div",{class:"meta"}, "Aún no indicó qué tiene."));
+      }
+      if(nota) bd.appendChild(el("div",{class:"note"}, nota));
+      if(fotos.length){
+        const g = el("div",{class:"cardfotos"});
+        fotos.forEach((url, idx)=> g.appendChild(el("img",{src:url, alt:"Foto", loading:"lazy", onclick:()=>abrirLightbox(fotos, idx)})));
+        bd.appendChild(g);
+      }
+    }, true));
   }
-
-  // Fotos (de cualquier centro)
-  if(Array.isArray(c.fotos) && c.fotos.length){
-    const g = el("div",{class:"cardfotos"});
-    c.fotos.forEach((url, idx)=>{
-      g.appendChild(el("img",{src:url, alt:"Foto del centro", loading:"lazy",
-        onclick:()=>abrirLightbox(c.fotos, idx)}));
-    });
-    body.appendChild(g);
-  }
-  if(c.nota) body.appendChild(el("div",{class:"note"}, c.nota));
 
   const fr = freshness(c.actualizado);
   const foot = el("div",{class:"foot"}, el("span",{class:fr.cls}, fr.txt));
@@ -1259,21 +1337,23 @@ function abrirLightbox(urls, idx){
 }
 
 // Galería de fotos para un acopio ya registrado: ver en grande, agregar y quitar (máx 3).
-function fotoField(c){
-  if(!Array.isArray(c.fotos)) c.fotos = [];
+function fotoField(c, rol){
+  const key = rol==="ofrece" ? "fotosOfrece" : "fotosNecesita";
+  if(!Array.isArray(c[key])) c[key] = [];
+  const arr = c[key];
   const MAX = 3;
   const box = el("div",{class:"fotobox"});
-  if(c.fotos.length){
+  if(arr.length){
     const grid = el("div",{class:"fotogrid"});
-    c.fotos.forEach((url, idx)=>{
+    arr.forEach((url, idx)=>{
       const cell = el("div",{class:"fotocell"});
-      cell.appendChild(el("img",{src:url, alt:"Foto de los insumos", loading:"lazy",
-        onclick:()=>abrirLightbox(c.fotos, idx)}));
+      cell.appendChild(el("img",{src:url, alt:"Foto", loading:"lazy",
+        onclick:()=>abrirLightbox(arr, idx)}));
       cell.appendChild(el("button",{class:"fotodel", "aria-label":"Quitar foto", onclick:async()=>{
         if(!confirm("¿Quitar esta foto?")) return;
         try{
           const r = await store.borrarFoto(c.id, fotoName(url));
-          if(r && r.centro) c.fotos = r.centro.fotos || [];
+          if(r && r.centro){ c.fotosNecesita=r.centro.fotosNecesita||[]; c.fotosOfrece=r.centro.fotosOfrece||[]; }
           await refresh(); render(); toast("Foto quitada");
         }catch(err){ toast(err.status===401?"Tu sesión expiró; vuelve a entrar con tu código":"No se pudo quitar"); }
       }}, "✕"));
@@ -1281,7 +1361,7 @@ function fotoField(c){
     });
     box.appendChild(grid);
   }
-  if(c.fotos.length < MAX){
+  if(arr.length < MAX){
     const input = el("input",{type:"file", accept:"image/*", style:"display:none",
       onchange:async(e)=>{
         const file = e.target.files && e.target.files[0];
@@ -1290,11 +1370,11 @@ function fotoField(c){
         if(lbl) lbl.textContent = "Procesando…";
         try{
           const dataUrl = await shrinkImage(file);
-          const r = await store.subirFoto(c.id, dataUrl);
-          if(r && r.centro) c.fotos = r.centro.fotos || [];
+          const r = await store.subirFoto(c.id, dataUrl, rol);
+          if(r && r.centro){ c.fotosNecesita=r.centro.fotosNecesita||[]; c.fotosOfrece=r.centro.fotosOfrece||[]; }
           await refresh(); render(); toast("Foto agregada");
         }catch(err){
-          if(lbl) lbl.textContent = c.fotos.length ? ("Agregar otra foto ("+c.fotos.length+"/"+MAX+")") : "Tomar o elegir una foto";
+          if(lbl) lbl.textContent = arr.length ? ("Agregar otra foto ("+arr.length+"/"+MAX+")") : "Tomar o elegir una foto";
           toast(err.status===401 ? "Tu sesión expiró; vuelve a entrar con tu código"
                 : err.status===409 ? "Ya alcanzaste el máximo de "+MAX+" fotos"
                 : err.status===413 ? "La foto pesa demasiado, intenta otra"
@@ -1302,7 +1382,7 @@ function fotoField(c){
         }
       }});
     const btn = el("button",{class:"linkbtn fotoadd", style:"display:block", onclick:()=>input.click()},
-      c.fotos.length ? ("Agregar otra foto ("+c.fotos.length+"/"+MAX+")") : "Tomar o elegir una foto");
+      arr.length ? ("Agregar otra foto ("+arr.length+"/"+MAX+")") : "Tomar o elegir una foto");
     box.appendChild(input);
     box.appendChild(btn);
   } else {
@@ -1314,34 +1394,36 @@ function fotoField(c){
 }
 
 // Fotos durante el registro: se acumulan en el navegador y se suben tras crear el centro.
-function fotoFieldNuevo(c){
-  if(!Array.isArray(c._fotosPend)) c._fotosPend = [];
+function fotoFieldNuevo(c, rol){
+  const key = rol==="ofrece" ? "_fotosPendOfr" : "_fotosPendNec";
+  if(!Array.isArray(c[key])) c[key] = [];
+  const arr = c[key];
   const MAX = 3;
   const box = el("div",{class:"fotobox"});
-  if(c._fotosPend.length){
+  if(arr.length){
     const grid = el("div",{class:"fotogrid"});
-    c._fotosPend.forEach((url, idx)=>{
+    arr.forEach((url, idx)=>{
       const cell = el("div",{class:"fotocell"});
       cell.appendChild(el("img",{src:url, alt:"Foto seleccionada", loading:"lazy",
-        onclick:()=>abrirLightbox(c._fotosPend, idx)}));
+        onclick:()=>abrirLightbox(arr, idx)}));
       cell.appendChild(el("button",{class:"fotodel","aria-label":"Quitar foto",
-        onclick:()=>{ c._fotosPend.splice(idx,1); render(); }}, "✕"));
+        onclick:()=>{ arr.splice(idx,1); render(); }}, "✕"));
       grid.appendChild(cell);
     });
     box.appendChild(grid);
   }
-  if(c._fotosPend.length < MAX){
+  if(arr.length < MAX){
     const input = el("input",{type:"file", accept:"image/*", style:"display:none",
       onchange:async(e)=>{
         const file = e.target.files && e.target.files[0];
         if(!file) return;
         const lbl = box.querySelector(".fotoadd");
         if(lbl) lbl.textContent = "Procesando…";
-        try{ const dataUrl = await shrinkImage(file); c._fotosPend.push(dataUrl); render(); }
+        try{ const dataUrl = await shrinkImage(file); arr.push(dataUrl); render(); }
         catch(_){ if(lbl) lbl.textContent = "Tomar o elegir una foto"; toast("No se pudo procesar la foto"); }
       }});
     const btn = el("button",{class:"linkbtn fotoadd", style:"display:block", onclick:()=>input.click()},
-      c._fotosPend.length ? ("Agregar otra foto ("+c._fotosPend.length+"/"+MAX+")") : "Tomar o elegir una foto");
+      arr.length ? ("Agregar otra foto ("+arr.length+"/"+MAX+")") : "Tomar o elegir una foto");
     box.appendChild(input);
     box.appendChild(btn);
   } else {
@@ -1545,7 +1627,8 @@ function centroForm(){
       const payload = {nombre:c.nombre, tipo:c.tipo, zona:c.zona, contacto:c.contacto,
         necesita:!!c.necesita, ofrece:!!c.ofrece,
         estado:c.estado, necesidades:(c.necesita ? (c.necesidades||[]) : []),
-        disponibilidad:(c.ofrece ? (c.disponibilidad||{}) : {}), nota:c.nota,
+        disponibilidad:(c.ofrece ? (c.disponibilidad||{}) : {}),
+        notaNecesita:(c.necesita? (c.notaNecesita||"") : ""), notaOfrece:(c.ofrece? (c.notaOfrece||"") : ""),
         lat:(typeof c.lat==="number"?c.lat:null), lng:(typeof c.lng==="number"?c.lng:null)};
       if("lat" in c || "lng" in c){ payload.lat=(typeof c.lat==="number"?c.lat:null); payload.lng=(typeof c.lng==="number"?c.lng:null); }
       if(c._pw && c._pw.length>0) payload.newPassword=c._pw;
@@ -1645,6 +1728,7 @@ function centroForm(){
   const necOpen = !!c.necesita;
   main.appendChild(el("button",{class:"rolehead need"+(necOpen?" open":""), "aria-expanded":necOpen?"true":"false",
     onclick:()=>{ c.necesita=!c.necesita; if(c.necesita && !c.estado) c.estado="urgente"; render(); }},
+    el("span",{class:"roleico", html:"&#9745;"}),
     el("span",{class:"rolecheck"+(necOpen?" on":"")}, necOpen?"✓":""),
     el("span",{class:"roletext"}, el("b",{}, "Necesito insumos"), el("small",{}, "Marca tu urgencia y qué te falta")),
     el("span",{class:"rolechev", html: necOpen?"&#9652;":"&#9662;"})
@@ -1672,6 +1756,12 @@ function centroForm(){
       });
       body.appendChild(el("div",{class:"field"}, el("label",{}, "¿Qué necesitas? ", el("span",{class:"hint"},"(toca lo que aplique)")), sup));
     }
+    const notaN = el("textarea",{placeholder:"p. ej. prioridad analgésicos; faltan jeringas 5ml", maxlength:"240",
+      oninput:e=>c.notaNecesita=e.target.value}); notaN.value=c.notaNecesita||"";
+    body.appendChild(el("div",{class:"field"}, el("label",{}, "Nota ", el("span",{class:"hint"},"(opcional)")), notaN));
+    body.appendChild(el("div",{class:"field"},
+      el("label",{}, "Fotos ", el("span",{class:"hint"},"(opcional, máx. 3)")),
+      existente ? fotoField(c,"necesita") : fotoFieldNuevo(c,"necesita")));
     main.appendChild(body);
   }
 
@@ -1680,6 +1770,7 @@ function centroForm(){
   if(ofrOpen && !c.disponibilidad) c.disponibilidad = {};
   main.appendChild(el("button",{class:"rolehead give"+(ofrOpen?" open":""), "aria-expanded":ofrOpen?"true":"false",
     onclick:()=>{ c.ofrece=!c.ofrece; if(c.ofrece && !c.disponibilidad) c.disponibilidad={}; render(); }},
+    el("span",{class:"roleico", html:"&#127873;"}),
     el("span",{class:"rolecheck"+(ofrOpen?" on":"")}, ofrOpen?"✓":""),
     el("span",{class:"roletext"}, el("b",{}, "Ofrezco insumos"), el("small",{}, "Marca qué tienes y cuánto")),
     el("span",{class:"rolechev", html: ofrOpen?"&#9652;":"&#9662;"})
@@ -1689,18 +1780,14 @@ function centroForm(){
     body.appendChild(el("div",{class:"field"},
       el("label",{}, "¿Qué insumos tienes disponibles? ", el("span",{class:"hint"},"(marca el nivel; deja en blanco lo que no tengas)")),
       dispEditor(c)));
+    const notaO = el("textarea",{placeholder:"p. ej. ~200 botellas de agua; entrego de tarde", maxlength:"240",
+      oninput:e=>c.notaOfrece=e.target.value}); notaO.value=c.notaOfrece||"";
+    body.appendChild(el("div",{class:"field"}, el("label",{}, "Nota ", el("span",{class:"hint"},"(opcional)")), notaO));
+    body.appendChild(el("div",{class:"field"},
+      el("label",{}, "Fotos ", el("span",{class:"hint"},"(opcional, máx. 3)")),
+      existente ? fotoField(c,"ofrece") : fotoFieldNuevo(c,"ofrece")));
     main.appendChild(body);
   }
-
-  // Nota compartida
-  const nota = el("textarea",{placeholder:"p. ej. faltan jeringas 5ml; o ~200 botellas de agua, entrego de tarde", maxlength:"240",
-    oninput:e=>c.nota=e.target.value}); nota.value=c.nota||"";
-  main.appendChild(el("div",{class:"field"}, el("label",{}, "Nota ", el("span",{class:"hint"},"(opcional)")), nota));
-
-  // Fotos para todos, también durante el registro
-  main.appendChild(el("div",{class:"field"},
-    el("label",{}, "Fotos ", el("span",{class:"hint"},"(opcional, máx. 3)")),
-    existente ? fotoField(c) : fotoFieldNuevo(c)));
 
   const algunRol = !!c.necesita || !!c.ofrece;
   const necOK = !c.necesita || !!c.estado;
@@ -1718,15 +1805,19 @@ function centroForm(){
     const payload = {nombre:c.nombre, tipo:c.tipo, zona:c.zona, contacto:c.contacto,
       necesita:!!c.necesita, ofrece:!!c.ofrece,
       estado:c.estado, necesidades:(c.necesita? c.necesidades : []),
-      disponibilidad:(c.ofrece? (c.disponibilidad||{}) : {}), nota:c.nota,
+      disponibilidad:(c.ofrece? (c.disponibilidad||{}) : {}),
+      notaNecesita:(c.necesita? (c.notaNecesita||"") : ""), notaOfrece:(c.ofrece? (c.notaOfrece||"") : ""),
       lat:(typeof c.lat==="number"?c.lat:null), lng:(typeof c.lng==="number"?c.lng:null),
       password:c._pw||"", permitirDuplicado:!!c._allowDup};
     try{
       const d = await store.register(payload);
       state.myId = d.centro.id; store.setMyId(d.centro.id);
-      // Subir las fotos elegidas durante el registro (ya hay id y token)
-      if(Array.isArray(c._fotosPend) && c._fotosPend.length){
-        for(const du of c._fotosPend){ try{ await store.subirFoto(d.centro.id, du); }catch(_){} }
+      // Subir las fotos elegidas durante el registro, cada una a su rol
+      if(c.necesita && Array.isArray(c._fotosPendNec)){
+        for(const du of c._fotosPendNec){ try{ await store.subirFoto(d.centro.id, du, "necesita"); }catch(_){} }
+      }
+      if(c.ofrece && Array.isArray(c._fotosPendOfr)){
+        for(const du of c._fotosPendOfr){ try{ await store.subirFoto(d.centro.id, du, "ofrece"); }catch(_){} }
       }
       await refresh();
       state.editing=null; state.dupMatch=null;
@@ -1979,7 +2070,7 @@ function ayudaScreen(){
 
   sec("Qué significan los colores y niveles",
     el("div",{class:"helplist"},
-      el("div",{}, el("b",{style:"color:var(--urgente)"}, "Urgente"), " · ", el("b",{style:"color:var(--bajo)"}, "Bajo"), " · ", el("b",{style:"color:var(--suf)"}, "Suficiente"), " — estado de un hospital o refugio."),
+      el("div",{}, el("b",{style:"color:var(--urgente)"}, "Urgente"), " · ", el("b",{style:"color:var(--bajo)"}, "Bajo"), " · ", el("b",{style:"color:var(--suf)"}, "Abastecido"), " — estado de un hospital o refugio."),
       el("div",{style:"margin-top:6px"}, el("b",{style:"color:#1b8a5a"}, "Mucho"), " / ", el("b",{style:"color:#e07b00"}, "Medio"), " / ", el("b",{style:"color:#c25e00"}, "Poco"), " — lo que tiene un acopio. ", el("b",{style:"color:var(--muted)"}, "Agotado"), " aparece en gris: ya no está disponible.")));
 
   if((a.faqs||[]).length)
