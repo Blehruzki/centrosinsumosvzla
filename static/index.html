@@ -195,7 +195,7 @@
   .faqedit{padding:11px; border:1px solid var(--line); border-radius:11px; margin-bottom:10px; background:var(--subtle);}
   .faqedit .editta{margin-top:8px;}
   /* banner informativo */
-  .banner{position:relative; display:flex; align-items:center; gap:10px; padding:11px 40px 11px 14px;
+  .banner{position:sticky; top:0; z-index:800; display:flex; align-items:center; gap:10px; padding:11px 40px 11px 14px;
     font-size:13.5px; font-weight:600; line-height:1.4; border-bottom:1px solid rgba(0,0,0,.06);}
   .banner .bicon{flex:0 0 auto; width:22px; height:22px; border-radius:50%; display:flex; align-items:center;
     justify-content:center; font-size:13px; font-weight:800; font-style:italic; background:rgba(0,0,0,.12);}
@@ -2010,16 +2010,25 @@ function render(){
   else if(state.screen==="adminAyuda") node=adminAyudaScreen();
   else if(state.screen==="adminBanner") node=adminBannerScreen();
   else node=landing();
-  // Banner informativo arriba de todo (excepto en las pantallas de edición del propio banner)
   // Banner informativo (excepto en su propia pantalla de edición):
-  // desplegado arriba, o replegado como ícono flotante.
+  // desplegado arriba (fijo), o replegado como ícono flotante.
+  let bannerShown = false;
   if(bannerActive() && state.screen!=="adminBanner"){
     if(bannerCollapsed()) node.appendChild(bannerFab());
-    else node.insertBefore(bannerEl(), node.firstChild);
+    else { node.insertBefore(bannerEl(), node.firstChild); bannerShown = true; }
   }
   root.replaceWith(node);
   node.id="app";
   _lastScreen = state.screen;
+  // La cabecera (topbar) también es sticky; cuando hay banner, la apilamos justo debajo
+  // ajustando su 'top' a la altura real del banner (que varía según el texto).
+  if(bannerShown){
+    requestAnimationFrame(()=>{
+      const ban = node.querySelector(":scope > .banner");
+      const bar = node.querySelector(".bar");
+      if(ban && bar) bar.style.top = ban.offsetHeight + "px";
+    });
+  }
   // Si seguimos en la misma pantalla, mantener el scroll; si cambiamos, ir arriba
   window.scrollTo(0, sameScreen ? y : 0);
 }
