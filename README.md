@@ -15,6 +15,7 @@ backend/
 ├── docker-compose.yml  app + Caddy (HTTPS), datos en volumen aislado
 ├── Caddyfile           HTTPS automático + cabeceras de seguridad
 ├── .env.example        plantilla de configuración (cópiala a .env)
+├── API.md              documentación de la API pública de lectura
 └── DEPLOY.md           guía paso a paso (servidor propio y hosting gratuito)
 ```
 
@@ -38,6 +39,16 @@ pip install -r requirements.txt
 SECRET_KEY=prueba ADMIN_PASSWORD=admin123 python3 app.py
 # abre http://127.0.0.1:8000
 ```
+
+## API pública
+
+La información de centros está disponible como **API de solo lectura, abierta a
+cualquier origen**, para que otras apps puedan consumirla y colaborar en una red
+unificada de información. El endpoint principal es `GET /api/centros`.
+
+**Consulta [`API.md`](API.md)** para la documentación completa: endpoints,
+formato de los datos, catálogo de insumos y ejemplos de consumo en JavaScript,
+cURL y Python.
 
 ## Seguridad (resumen)
 
