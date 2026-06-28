@@ -106,7 +106,10 @@
   .csec.need.suficiente{background:#eaf5ee; border-color:#bfe0cb;} .csec.need.suficiente .csec-head{color:#1b6b43;}
   .csec.need.bajo{background:#fff3df; border-color:#f3d9a8;} .csec.need.bajo .csec-head{color:#8a5200;}
   .csec.need.urgente{background:#fdeceb; border-color:#f1b8b4;} .csec.need.urgente .csec-head{color:#a01a13;}
-  .csec.need.urgente .need{background:var(--surface); color:#a01a13;}
+  .csec.need .need{background:transparent;}
+  .csec.need.suficiente .need{border-color:#bfe0cb; color:#1b6b43;}
+  .csec.need.bajo .need{border-color:#f3d9a8; color:#8a5200;}
+  .csec.need.urgente .need{border-color:#f1b8b4; color:#a01a13;}
   .csec.give{background:#e9f3f6; border-color:#bcd9e1;} .csec.give .csec-head{color:#0a5566;}
   /* selector de rol */
   .rolseg{display:flex; gap:5px; background:var(--subtle); border:1px solid var(--line); border-radius:11px; padding:4px; margin-bottom:12px;}
@@ -115,10 +118,10 @@
   .rolseg-b .rolseg-ico{font-size:14px; line-height:1;}
   .rolseg-b.on{background:var(--surface); color:var(--ink); font-weight:700; box-shadow:0 1px 3px rgba(0,0,0,.1);}
   .card .body{padding:14px 15px; flex:1; min-width:0;}
-  .card .top{display:flex; align-items:flex-start; gap:10px;}
+  .card .top{display:flex; align-items:flex-start; justify-content:space-between; gap:10px;}
   .card .name{font-size:16.5px; font-weight:800; letter-spacing:-.01em; word-break:break-word;}
   .card .meta{font-size:12.5px; color:var(--muted); margin-top:1px;}
-  .pill{flex:0 0 auto; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+  .pill{flex:0 0 auto; margin-left:auto; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
     padding:5px 9px; border-radius:999px; white-space:nowrap;}
   .pill.urgente{background:var(--urgente-bg); color:var(--urgente)}
   .pill.bajo{background:var(--bajo-bg); color:var(--bajo)}
@@ -126,10 +129,10 @@
   .pill.acopio{background:#e6eff2; color:#0a6376}
   .pill.particular{background:#ede9f8; color:#5b3aa0}
   .needs{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;}
-  .need{font-size:12px; font-weight:700; background:var(--subtle); color:var(--ink);
-    border:1px solid var(--line); border-radius:8px; padding:5px 9px;}
-  .note{font-size:13.5px; color:var(--ink); margin-top:10px; background:var(--subtle);
-    border-radius:10px; padding:9px 11px; white-space:pre-wrap; word-break:break-word;}
+  .need{font-size:12px; font-weight:700; background:transparent; color:var(--ink);
+    border:1px solid var(--line); border-radius:999px; padding:5px 10px;}
+  .note{font-size:13.5px; font-weight:600; color:var(--ink); margin-top:10px; background:var(--surface);
+    border:1px solid var(--line); border-radius:10px; padding:9px 11px; white-space:pre-wrap; word-break:break-word;}
   .card .foot{display:flex; align-items:center; gap:10px; margin-top:11px; font-size:12.5px; color:var(--muted);}
   .card .foot a{color:var(--brand-ink); font-weight:700; text-decoration:none;}
   .cardlink{color:var(--brand-ink); font-weight:700; text-decoration:none;}
@@ -951,10 +954,18 @@ function bannerFab(){
 
 /* ----- Voluntario ----- */
 // Texto normalizado donde busca la barra: nombre, zona, nota e insumos (necesidades o disponibilidad).
-function searchHaystack(c){
-  const parts = [c.nombre, c.zona, c.nota];
-  (c.necesidades||[]).forEach(k=> parts.push(SUPPLY_LABEL[k]||k));
-  Object.keys(c.disponibilidad||{}).forEach(k=> parts.push(SUPPLY_LABEL[k]||k));
+function searchHaystack(c, rol){
+  const parts = [c.nombre, c.zona];
+  const incNec = rol !== "ofrece";   // si filtras "ofrecen", no busques en el lado de necesidades
+  const incOfr = rol !== "necesita";
+  if(incNec){
+    if(c.necesita && c.estado!=="suficiente") (c.necesidades||[]).forEach(k=> parts.push(SUPPLY_LABEL[k]||k));
+    if(c.notaNecesita) parts.push(c.notaNecesita);
+  }
+  if(incOfr){
+    Object.entries(c.disponibilidad||{}).forEach(([k,nv])=>{ if(nv!=="agotado") parts.push(SUPPLY_LABEL[k]||k); });
+    if(c.notaOfrece) parts.push(c.notaOfrece);
+  }
   return norm(parts.filter(Boolean).join(" "));
 }
 
@@ -975,7 +986,7 @@ function computeView(list){
       else ok = tieneOfrecido || loNecesita;
       if(!ok) return false;
     }
-    if(q && !searchHaystack(c).includes(q)) return false;
+    if(q && !searchHaystack(c, state.filterRol).includes(q)) return false;
     return true;
   });
   if(state.sortBy==="cercania" && state.myLoc){
