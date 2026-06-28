@@ -761,12 +761,8 @@ function searchHaystack(c){
   return norm(parts.filter(Boolean).join(" "));
 }
 
-function voluntario(){
-  let list = state.centros.slice();
-  if(state.demo) list = list.concat(DEMO);
-  const counts = {urgente:0,bajo:0,suficiente:0};
-  list.forEach(c=>{ if(c.tipo!=="acopio" && counts[c.estado]!==undefined) counts[c.estado]++; });
-
+// Calcula la lista filtrada y ordenada según búsqueda, filtros y orden actuales.
+function computeView(list){
   const q = norm(state.searchText||"");
   let view = list.filter(c=>{
     if(state.filterTipo && c.tipo!==state.filterTipo) return false;
@@ -774,7 +770,7 @@ function voluntario(){
       const k = state.filterSupply;
       if(c.tipo==="acopio"){
         const lvl = (c.disponibilidad||{})[k];
-        if(!(lvl && lvl!=="agotado")) return false;   // lo tiene y no está agotado
+        if(!(lvl && lvl!=="agotado")) return false;
       } else {
         if(c.estado==="suficiente") return false;
         if(!(c.necesidades||[]).includes(k)) return false;
@@ -792,6 +788,14 @@ function voluntario(){
   } else {
     view.sort((a,b)=> (STATUS[a.estado].order-STATUS[b.estado].order) || (b.actualizado-a.actualizado));
   }
+  return view;
+}
+
+function voluntario(){
+  let list = state.centros.slice();
+  if(state.demo) list = list.concat(DEMO);
+  const counts = {urgente:0,bajo:0,suficiente:0};
+  list.forEach(c=>{ if(c.tipo!=="acopio" && counts[c.estado]!==undefined) counts[c.estado]++; });
 
   const main = el("main",{});
   if(state.loadError){
@@ -805,15 +809,22 @@ function voluntario(){
     el("div",{class:"stat b"}, el("b",{},String(counts.bajo)), el("span",{},"Bajo")),
     el("div",{class:"stat s"}, el("b",{},String(counts.suficiente)), el("span",{},"Suficiente"))
   ));
-  // barra de búsqueda
+
+  // barra de búsqueda — actualiza solo los resultados, sin recrear el campo (no recarga el teclado)
   const search = el("input",{class:"searchbox", type:"search", inputmode:"search", autocomplete:"off",
     placeholder:"Buscar centro o insumo (p. ej. jeringas)", value:state.searchText||"",
-    oninput:e=>{ state.searchText=e.target.value; state._searchCaret=e.target.selectionStart; state._focusSearch=true; render(); }});
+    oninput:e=>{ state.searchText=e.target.value; syncClear(); renderResults(); }});
+  const clearBtn = el("button",{class:"searchclear","aria-label":"Limpiar búsqueda",
+    onclick:()=>{ state.searchText=""; search.value=""; syncClear(); renderResults(); search.focus(); }}, "✕");
   const searchWrap = el("div",{class:"searchwrap"}, search);
-  if(state.searchText) searchWrap.appendChild(el("button",{class:"searchclear","aria-label":"Limpiar búsqueda",
-    onclick:()=>{ state.searchText=""; render(); }}, "✕"));
+  function syncClear(){
+    if(state.searchText && !clearBtn.isConnected) searchWrap.appendChild(clearBtn);
+    else if(!state.searchText && clearBtn.isConnected) clearBtn.remove();
+  }
+  syncClear();
   main.appendChild(searchWrap);
-  // filtros
+
+  // filtros (los toques sí redibujan: no afectan al teclado)
   const chip=(label,active,onClick,variant)=>el("button",{class:"chip"+(variant?" "+variant:""),"aria-pressed":active?"true":"false", onclick:onClick},label);
   const filterRow = el("div",{class:"filters"});
   filterRow.appendChild(chip("Todos", !state.filterSupply && !state.filterTipo, ()=>{state.filterSupply=null;state.filterTipo=null;render();}));
@@ -823,7 +834,7 @@ function voluntario(){
   SUPPLIES.forEach(([k,l])=> filterRow.appendChild(chip(l, state.filterSupply===k, ()=>{state.filterSupply=state.filterSupply===k?null:k;render();}, "ins")));
   main.appendChild(filterRow);
 
-  // Herramientas: ubicación, orden y mapa
+  // Herramientas: ubicación, orden
   const conCoords = list.some(c=>typeof c.lat==="number");
   const tools = el("div",{class:"toolrow"});
   tools.appendChild(el("button",{onclick:async(e)=>{
@@ -837,28 +848,34 @@ function voluntario(){
   }
   if(tools.childNodes.length) main.appendChild(tools);
 
-  // Mapa siempre visible (se refresca con la vista cada pocos segundos)
-  if(conCoords){
-    const m = miniMap(view.length?view:list);
-    if(m) main.appendChild(m);
+  // Resultados (mapa + lista). Se reconstruyen solos al escribir, sin tocar la barra.
+  const resultsBox = el("div",{});
+  function renderResults(){
+    resultsBox.textContent = "";
+    const view = computeView(list);
+    if(conCoords){
+      const m = miniMap(view.length?view:list);
+      if(m) resultsBox.appendChild(m);
+    }
+    if(view.length===0){
+      const hayBusqueda = !!(state.searchText || state.filterSupply || state.filterTipo);
+      resultsBox.appendChild(el("div",{class:"empty"},
+        el("div",{class:"big", html:"&#9737;"}),
+        el("h3",{}, list.length===0 ? "Todavía no hay centros" : (state.searchText ? "Sin resultados para tu búsqueda" : "Nada coincide con el filtro")),
+        el("p",{}, list.length===0
+          ? "Cuando un hospital, refugio o acopio marque su estado, aparecerá aquí."
+          : (state.searchText ? "Prueba con otra palabra, o revisa los filtros activos." : "Quita algún filtro para ver más centros.")),
+        hayBusqueda && el("div",{style:"margin-top:14px"},
+          el("button",{class:"btn ghost", style:"max-width:240px;margin:0 auto", onclick:()=>{state.searchText="";state.filterSupply=null;state.filterTipo=null;render();}}, "Limpiar búsqueda y filtros")),
+        list.length===0 && !state.demo && el("div",{style:"margin-top:16px"},
+          el("button",{class:"btn ghost", style:"max-width:240px;margin:0 auto", onclick:()=>{state.demo=true;render();}}, "Ver con datos de ejemplo"))
+      ));
+    } else {
+      view.forEach(c=> resultsBox.appendChild(facilityCard(c)));
+    }
   }
-
-  if(view.length===0){
-    const hayBusqueda = !!(state.searchText || state.filterSupply || state.filterTipo);
-    main.appendChild(el("div",{class:"empty"},
-      el("div",{class:"big", html:"&#9737;"}),
-      el("h3",{}, list.length===0 ? "Todavía no hay centros" : (state.searchText ? "Sin resultados para tu búsqueda" : "Nada coincide con el filtro")),
-      el("p",{}, list.length===0
-        ? "Cuando un hospital, refugio o acopio marque su estado, aparecerá aquí."
-        : (state.searchText ? "Prueba con otra palabra, o revisa los filtros activos." : "Quita algún filtro para ver más centros.")),
-      hayBusqueda && el("div",{style:"margin-top:14px"},
-        el("button",{class:"btn ghost", style:"max-width:240px;margin:0 auto", onclick:()=>{state.searchText="";state.filterSupply=null;state.filterTipo=null;render();}}, "Limpiar búsqueda y filtros")),
-      list.length===0 && !state.demo && el("div",{style:"margin-top:16px"},
-        el("button",{class:"btn ghost", style:"max-width:240px;margin:0 auto", onclick:()=>{state.demo=true;render();}}, "Ver con datos de ejemplo"))
-    ));
-  } else {
-    view.forEach(c=> main.appendChild(facilityCard(c)));
-  }
+  renderResults();
+  main.appendChild(resultsBox);
 
   if(state.demo){
     main.appendChild(el("div",{class:"footnote"},
@@ -866,14 +883,6 @@ function voluntario(){
       el("a",{href:"#", style:"color:var(--brand-ink);font-weight:700", onclick:(e)=>{e.preventDefault();state.demo=false;render();}}, "Ocultar ejemplos")));
   }
   main.appendChild(footnote());
-
-  // Mantener el foco en la barra de búsqueda tras redibujar (no perder lo que se escribe)
-  if(state._focusSearch){
-    state._focusSearch = false;
-    const caret = state._searchCaret;
-    setTimeout(()=>{ const i=document.querySelector(".searchbox"); if(i){ i.focus();
-      if(caret!=null){ try{ i.setSelectionRange(caret, caret); }catch(_){} } } }, 0);
-  }
 
   return el("div",{class:"wrap"},
     topbar("Centros que necesitan insumos",
