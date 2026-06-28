@@ -207,6 +207,10 @@
   .adminrow .am{font-size:12.5px; color:var(--muted); margin-top:3px; line-height:1.5;}
   .aacts{display:flex; gap:8px; margin-top:11px; flex-wrap:wrap;}
   .aacts .smallbtn{margin-left:0;}
+  .codepill{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:var(--brand-ink);
+    background:#e6eff2; border:1px solid #d2e4e8; border-radius:9px; padding:6px 10px; letter-spacing:.08em;}
+  .codepill b{letter-spacing:.12em;}
+  .codex{appearance:none; border:0; background:none; cursor:pointer; color:var(--muted); font-size:13px; font-weight:800; padding:0 2px;}
   .danger{appearance:none; cursor:pointer; border:1px solid #f1b0ab; background:var(--urgente-bg); color:var(--urgente);
     border-radius:9px; padding:8px 12px; font-size:13px; font-weight:800;}
   .danger.solid{background:var(--urgente); color:#fff; border-color:var(--urgente);}
@@ -301,6 +305,8 @@ const store = {
   async adminList(token){ return (await api("/admin/centros",{headers:{Authorization:"Bearer "+token}})).centros||[]; },
   async adminDelete(token, id){ return await api("/admin/centros/"+id,{method:"DELETE", headers:{Authorization:"Bearer "+token}}); },
   async adminClearReports(token, id){ return await api("/admin/centros/"+id+"/reportes",{method:"DELETE", headers:{Authorization:"Bearer "+token}}); },
+  async adminGetCode(token, id){ return (await api("/admin/centros/"+id+"/codigo",{headers:{Authorization:"Bearer "+token}})).codigo; },
+  async adminRegenCode(token, id){ return (await api("/admin/centros/"+id+"/codigo",{method:"POST", headers:{Authorization:"Bearer "+token}})).codigo; },
 };
 
 /* ---------- Estado de la app ---------- */
@@ -332,6 +338,7 @@ let state = {
   adminInput: "",
   adminError: "",
   adminDelId: null,      // centro pendiente de confirmar borrado
+  adminCodes: {},        // id de centro -> código revelado en el panel
   reportFor: null,       // centro con el panel de reporte abierto
   demo: false,
 };
@@ -417,7 +424,7 @@ function locationCtrl(c){
       catch(err){ state.locManual=true; render(); toast("GPS no disponible; ingrésala a mano"); }
     }}, has ? "Actualizar con GPS" : "Usar mi ubicación (GPS)")
   ));
-  node.appendChild(el("button",{class:"linkbtn", style:"font-size:12.5px;padding-top:6px", onclick:()=>{ state.locManual=!state.locManual; render(); }},
+  node.appendChild(el("button",{class:"linkbtn", style:"display:block; font-size:12.5px; padding-top:6px", onclick:()=>{ state.locManual=!state.locManual; render(); }},
     state.locManual ? "Ocultar coordenadas manuales" : "Ingresar coordenadas manualmente"));
   if(state.locManual){
     const la=el("input",{type:"text", value:has?String(c.lat):"", placeholder:"Latitud (p. ej. 10.6545)", inputmode:"decimal",
@@ -427,7 +434,7 @@ function locationCtrl(c){
     node.appendChild(el("div",{class:"field", style:"margin:8px 0 8px"}, la));
     node.appendChild(el("div",{class:"field", style:"margin-bottom:0"}, lo));
   }
-  if(has) node.appendChild(el("button",{class:"linkbtn", style:"font-size:12.5px", onclick:()=>{ delete c.lat; delete c.lng; render(); }}, "Quitar ubicación"));
+  if(has) node.appendChild(el("button",{class:"linkbtn", style:"display:block; font-size:12.5px; margin-top:4px", onclick:()=>{ delete c.lat; delete c.lng; render(); }}, "Quitar ubicación"));
   return node;
 }
 
@@ -1110,6 +1117,26 @@ function adminScreen(){
     const acts = el("div",{class:"aacts"});
     if(typeof c.lat==="number")
       acts.appendChild(el("a",{class:"smallbtn", href:mapsLink(c), target:"_blank", rel:"noopener"}, "Ver en mapa"));
+    // Ver código del centro (bajo demanda)
+    if(state.adminCodes[c.id]){
+      acts.appendChild(el("span",{class:"codepill"}, "Código: ", el("b",{}, state.adminCodes[c.id]),
+        el("button",{class:"codex", title:"Ocultar", onclick:()=>{ delete state.adminCodes[c.id]; render(); }}, "✕")));
+    } else {
+      acts.appendChild(el("button",{class:"smallbtn", onclick:async(e)=>{
+        const b=e.currentTarget; b.disabled=true;
+        try{ state.adminCodes[c.id]=await store.adminGetCode(state.adminToken, c.id); render(); }
+        catch(err){ b.disabled=false; toast(err.status===401?"Sesión de admin expirada":"No se pudo obtener"); }
+      }}, "Ver código"));
+    }
+    // Regenerar código (anula el anterior)
+    if(state.adminDelId!==c.id){
+      acts.appendChild(el("button",{class:"smallbtn", onclick:async()=>{
+        if(!confirm("Se generará un código nuevo y el anterior dejará de funcionar. ¿Continuar?")) return;
+        try{ const nuevo=await store.adminRegenCode(state.adminToken, c.id);
+          state.adminCodes[c.id]=nuevo; render(); toast("Código regenerado: "+nuevo); }
+        catch(err){ toast(err.status===401?"Sesión de admin expirada":"No se pudo regenerar"); }
+      }}, "Regenerar código"));
+    }
     if(nrep>0){
       acts.appendChild(el("button",{class:"smallbtn", onclick:async()=>{
         try{ await store.adminClearReports(state.adminToken, c.id);

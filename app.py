@@ -526,6 +526,28 @@ def admin_clear_reports(cid):
     return jsonify(ok=True)
 
 
+@app.get("/api/admin/centros/<cid>/codigo")
+@require_admin
+def admin_get_code(cid):
+    row = get_db().execute("SELECT codigo FROM centros WHERE id=?", (cid,)).fetchone()
+    if not row:
+        return jsonify(error="no_existe"), 404
+    return jsonify(codigo=row["codigo"])
+
+
+@app.post("/api/admin/centros/<cid>/codigo")
+@require_admin
+def admin_regen_code(cid):
+    db = get_db()
+    row = db.execute("SELECT 1 FROM centros WHERE id=?", (cid,)).fetchone()
+    if not row:
+        return jsonify(error="no_existe"), 404
+    nuevo = unique_code(db)
+    db.execute("UPDATE centros SET codigo=? WHERE id=?", (nuevo, cid))
+    db.commit()
+    return jsonify(codigo=nuevo)
+
+
 @app.delete("/api/admin/centros/<cid>")
 @require_admin
 def admin_delete(cid):
