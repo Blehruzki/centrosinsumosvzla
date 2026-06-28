@@ -178,7 +178,6 @@
   .coordbtns{display:flex; flex-wrap:wrap; gap:8px;}
   .coordbtns a{display:inline-flex; align-items:center; gap:6px; text-decoration:none; border-radius:999px;
     padding:8px 13px; font-size:13px; font-weight:700; border:1px solid var(--line); background:var(--surface); color:var(--ink);}
-  .coordbtns a.yummy{background:#0c6e84; border-color:#0c6e84; color:#fff;}
   /* fotos */
   .fotobox{display:block;}
   .fotogrid{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:8px;}
@@ -297,6 +296,10 @@
   .btn:active{transform:translateY(1px)}
   .btn[disabled]{opacity:.45; cursor:not-allowed}
   .btn.ghost{background:var(--surface); color:var(--ink); border:1px solid var(--line);}
+  .coordbtn{padding:10px; font-size:13.5px; font-weight:700; border-radius:9px; letter-spacing:0;
+    background:var(--surface); color:var(--ink); border:1px solid var(--line);}
+  .coordbtn.cn{border-color:#e2867d; color:#931810;}
+  .coordbtn.cg{border-color:#7aa7b3; color:#0a5566;}
   .row2{display:flex; gap:10px; margin-top:10px;}
   .row2 .btn{flex:1}
   /* toast */
@@ -1165,7 +1168,8 @@ function facilityCard(c){
       : (items.length ? ("Necesita: "+resumen(items)) : "Necesita reabastecer");
     const fotos = c.fotosNecesita||[];
     const nota = c.notaNecesita||"";
-    const hayDetalle = items.length>0 || !!nota || fotos.length>0;
+    const puedeCoord = !c.demo;
+    const hayDetalle = items.length>0 || !!nota || fotos.length>0 || puedeCoord;
     body.appendChild(seccion("necesita", "need "+c.estado, "&#9745;", cabecera, (bd)=>{
       if(items.length){
         const needs = el("div",{class:"needs"});
@@ -1178,7 +1182,8 @@ function facilityCard(c){
         fotos.forEach((url, idx)=> g.appendChild(el("img",{src:url, alt:"Foto", loading:"lazy", onclick:()=>abrirLightbox(fotos, idx)})));
         bd.appendChild(g);
       }
-      if(!hayDetalle) bd.appendChild(el("div",{class:"meta"}, "Sin notas ni fotos."));
+      if(!items.length && !nota && !fotos.length) bd.appendChild(el("div",{class:"meta"}, "Sin notas ni fotos."));
+      if(puedeCoord) bd.appendChild(coordAccion(c, "necesita"));
     }, hayDetalle));
   }
 
@@ -1209,6 +1214,7 @@ function facilityCard(c){
         fotos.forEach((url, idx)=> g.appendChild(el("img",{src:url, alt:"Foto", loading:"lazy", onclick:()=>abrirLightbox(fotos, idx)})));
         bd.appendChild(g);
       }
+      if(!c.demo) bd.appendChild(coordAccion(c, "ofrece"));
     }, true));
   }
 
@@ -1224,15 +1230,6 @@ function facilityCard(c){
   }
   if(acciones.childNodes.length) foot.appendChild(acciones);
   body.appendChild(foot);
-
-  // Coordinar entrega (cualquiera que ofrezca insumos)
-  if(c.ofrece && !c.demo){
-    if(state.coordFor===c.id){
-      body.appendChild(coordPanel(c));
-    } else {
-      body.appendChild(el("button",{class:"btn", style:"margin-top:11px", onclick:()=>{ state.coordFor=c.id; render(); }}, "Coordinar entrega"));
-    }
-  }
 
   // Verificación por voluntarios
   if(!c.demo){
@@ -1455,25 +1452,40 @@ function waNumber(contacto){
   return d;
 }
 
-// Panel "Coordinar entrega" de un acopio: contacto directo + opción de Yummy.
-function coordPanel(c){
-  const msg = "Hola, vi en el mapa de insumos que el centro de acopio «"+c.nombre+
-              "» tiene insumos disponibles. Quisiera coordinar una entrega o retiro. ¿Me pueden ayudar?";
+// Panel para coordinar, según el rol: llevarles insumos (necesita) o retirar lo que ofrecen (ofrece).
+function coordPanel(c, rol){
+  const ofrece = rol==="ofrece";
+  const titulo = ofrece ? ("Coordinar retiro con "+c.nombre) : ("Coordinar ayuda para "+c.nombre);
+  const msg = ofrece
+    ? ("Hola, vi en el mapa de insumos que «"+c.nombre+"» tiene insumos disponibles. Quisiera coordinar un retiro o entrega. ¿Me pueden ayudar?")
+    : ("Hola, vi en el mapa de insumos que «"+c.nombre+"» necesita insumos. Quiero ayudar a llevarles lo que les falta. ¿Cómo coordinamos?");
   const box = el("div",{class:"coordbox"});
-  box.appendChild(el("div",{class:"ct"}, "Coordinar entrega con "+c.nombre));
-  const btns = el("div",{class:"coordbtns"});
+  box.appendChild(el("div",{class:"ct"}, titulo));
   if(c.contacto){
+    const btns = el("div",{class:"coordbtns"});
     const tel = String(c.contacto).replace(/[^\d+]/g,"");
     btns.appendChild(el("a",{href:"tel:"+tel}, "Llamar"));
     const wa = waNumber(c.contacto);
     if(wa) btns.appendChild(el("a",{href:"https://wa.me/"+wa+"?text="+encodeURIComponent(msg), target:"_blank", rel:"noopener"}, "WhatsApp"));
+    box.appendChild(btns);
+    box.appendChild(el("div",{class:"gatenote", style:"margin:9px 2px 0"},
+      ofrece ? "Coordina directamente con el centro por teléfono o WhatsApp para acordar el retiro o la entrega."
+             : "Escríbele al centro por teléfono o WhatsApp para acordar cómo hacerle llegar los insumos."));
+  } else {
+    box.appendChild(el("div",{class:"gatenote", style:"margin:4px 2px 0"},
+      "Este centro no dejó un teléfono de contacto. Si lo conoces por otra vía, coordínalo directamente."));
   }
-  btns.appendChild(el("a",{class:"yummy", href:"https://www.yummysuperapp.com/", target:"_blank", rel:"noopener"}, "Abrir Yummy"));
-  box.appendChild(btns);
-  box.appendChild(el("div",{class:"gatenote", style:"margin:9px 2px 0"},
-    "Coordina directamente con el centro por teléfono o WhatsApp. Para el traslado físico puedes pedir un “Mandadito” en Yummy (servicio con costo)."));
   box.appendChild(el("button",{class:"reportlink", style:"text-align:left", onclick:()=>{ state.coordFor=null; render(); }}, "Cerrar"));
   return box;
+}
+
+// Botón/panel de coordinación dentro de una sección de rol
+function coordAccion(c, rol){
+  const key = c.id+":"+(rol==="necesita"?"nec":"ofr");
+  if(state.coordFor===key) return coordPanel(c, rol);
+  const txt = rol==="necesita" ? "Quiero llevarles insumos" : "Coordinar retiro";
+  return el("button",{class:"btn coordbtn "+(rol==="necesita"?"cn":"cg"), style:"margin-top:11px",
+    onclick:()=>{ state.coordFor=key; render(); }}, txt);
 }
 
 // Panel del admin para restablecer o quitar la contraseña de un centro
