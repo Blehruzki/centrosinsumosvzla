@@ -134,6 +134,12 @@
   .coordbtns a{display:inline-flex; align-items:center; gap:6px; text-decoration:none; border-radius:999px;
     padding:8px 13px; font-size:13px; font-weight:700; border:1px solid var(--line); background:var(--surface); color:var(--ink);}
   .coordbtns a.yummy{background:#0c6e84; border-color:#0c6e84; color:#fff;}
+  /* fotos */
+  .fotobox{display:block;}
+  .fotoprev{margin-bottom:6px;}
+  .fotoprev img{width:100%; max-height:240px; object-fit:cover; border-radius:12px; border:1px solid var(--line); display:block;}
+  .cardfoto{margin-top:10px;}
+  .cardfoto img{width:100%; max-height:200px; object-fit:cover; border-radius:12px; border:1px solid var(--line); display:block;}
   /* big status buttons */
   .status3{display:grid; gap:10px;}
   .sbtn{appearance:none; cursor:pointer; text-align:left; width:100%; border-radius:13px; padding:16px 16px;
@@ -320,6 +326,14 @@ const store = {
   async update(c){
     const t=tokFor(c.id);
     return await api("/centros/"+c.id,{method:"PUT", headers:{Authorization:"Bearer "+t}, body:JSON.stringify(c)});
+  },
+  async subirFoto(id, dataUrl){
+    const t=tokFor(id);
+    return await api("/centros/"+id+"/foto",{method:"POST", headers:{Authorization:"Bearer "+t}, body:JSON.stringify({imagen:dataUrl})});
+  },
+  async borrarFoto(id){
+    const t=tokFor(id);
+    return await api("/centros/"+id+"/foto",{method:"DELETE", headers:{Authorization:"Bearer "+t}});
   },
   async login(code, password){
     const d=await api("/centros/login",{method:"POST", body:JSON.stringify({code, password:password||""})});
@@ -772,6 +786,7 @@ function facilityCard(c){
     } else {
       body.appendChild(el("div",{class:"meta", style:"margin-top:8px"}, "Aún no han indicado qué insumos tienen."));
     }
+    if(c.foto) body.appendChild(el("div",{class:"cardfoto"}, el("img",{src:c.foto, alt:"Insumos disponibles", loading:"lazy"})));
   } else if(c.estado!=="suficiente" && (c.necesidades||[]).length){
     const needs = el("div",{class:"needs"});
     c.necesidades.forEach(k=> needs.appendChild(el("span",{class:"need"}, SUPPLY_LABEL[k]||k)));
@@ -863,6 +878,68 @@ function dispEditor(c){
     wrap.appendChild(row);
   });
   return wrap;
+}
+
+// Encoge una imagen en el propio teléfono antes de subirla: la redimensiona
+// y baja la calidad hasta que pese poco (~0.6 MB), para no gastar datos ni disco.
+function shrinkImage(file, maxDim, quality){
+  maxDim = maxDim || 1280; quality = quality || 0.7;
+  return new Promise((resolve, reject)=>{
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = ()=>{
+      URL.revokeObjectURL(url);
+      let w = img.width, h = img.height;
+      if(w>=h && w>maxDim){ h = Math.round(h*maxDim/w); w = maxDim; }
+      else if(h>w && h>maxDim){ w = Math.round(w*maxDim/h); h = maxDim; }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      let q = quality, out = canvas.toDataURL("image/jpeg", q);
+      while(out.length > 650*1024*1.37 && q > 0.4){ q -= 0.1; out = canvas.toDataURL("image/jpeg", q); }
+      resolve(out);
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error("img")); };
+    img.src = url;
+  });
+}
+
+// Sección de foto para un acopio ya registrado: ver / agregar / quitar, con aviso de privacidad.
+function fotoField(c){
+  const box = el("div",{class:"fotobox"});
+  if(c.foto){
+    box.appendChild(el("div",{class:"fotoprev"}, el("img",{src:c.foto, alt:"Foto de los insumos"})));
+    box.appendChild(el("button",{class:"linkbtn", style:"display:block", onclick:async()=>{
+      if(!confirm("¿Quitar la foto?")) return;
+      try{ await store.borrarFoto(c.id); delete c.foto; await refresh(); render(); toast("Foto quitada"); }
+      catch(err){ toast(err.status===401?"Tu sesión expiró; vuelve a entrar con tu código":"No se pudo quitar"); }
+    }}, "Quitar foto"));
+  } else {
+    const input = el("input",{type:"file", accept:"image/*", capture:"environment", style:"display:none",
+      onchange:async(e)=>{
+        const file = e.target.files && e.target.files[0];
+        if(!file) return;
+        const lbl = box.querySelector(".fotoadd");
+        if(lbl) lbl.textContent = "Procesando…";
+        try{
+          const dataUrl = await shrinkImage(file);
+          const r = await store.subirFoto(c.id, dataUrl);
+          if(r && r.centro && r.centro.foto) c.foto = r.centro.foto;
+          await refresh(); render(); toast("Foto agregada");
+        }catch(err){
+          if(lbl) lbl.textContent = "Agregar foto";
+          toast(err.status===401 ? "Tu sesión expiró; vuelve a entrar con tu código"
+                : err.status===413 ? "La foto pesa demasiado, intenta otra"
+                : "No se pudo subir la foto");
+        }
+      }});
+    const btn = el("button",{class:"linkbtn fotoadd", style:"display:block", onclick:()=>input.click()}, "Agregar foto");
+    box.appendChild(input);
+    box.appendChild(btn);
+  }
+  box.appendChild(el("div",{class:"gatenote", style:"margin:8px 2px 0"},
+    "Sube solo fotos de los insumos. Evita rostros, documentos o direcciones visibles por privacidad y seguridad."));
+  return box;
 }
 
 // Construye un número en formato internacional venezolano (best-effort) para WhatsApp.
@@ -1156,6 +1233,12 @@ function centroForm(){
     const nota = el("textarea",{placeholder:"p. ej. ~200 botellas de agua; entregamos en horario de tarde", maxlength:"240",
       oninput:e=>c.nota=e.target.value}); nota.value=c.nota||"";
     main.appendChild(el("div",{class:"field"}, el("label",{}, "Nota ", el("span",{class:"hint"},"(opcional)")), nota));
+
+    if(existente){
+      main.appendChild(el("div",{class:"field"},
+        el("label",{}, "Foto de los insumos ", el("span",{class:"hint"},"(opcional)")),
+        fotoField(c)));
+    }
   } else {
   // Estado (hospital/refugio)
   const status3 = el("div",{class:"status3"});
