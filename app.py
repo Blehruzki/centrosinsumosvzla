@@ -531,6 +531,9 @@ def serve_foto(fname):
     resp = send_from_directory(FOTOS_DIR, fname, max_age=86400)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
+
+@app.post("/api/centros/<cid>/verify")
 def verify_centro(cid):
     if not rate_limit("verify", 60, 600):
         return jsonify(error="rate"), 429
