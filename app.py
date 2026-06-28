@@ -43,7 +43,8 @@ ALLOW_ORIGIN = os.environ.get("ALLOW_ORIGIN", "")
 SUPPLIES = {"agua", "alimentos", "medicamentos", "curacion",
             "abrigo", "higiene", "energia", "combustible"}
 ESTADOS = {"suficiente", "bajo", "urgente"}
-TIPOS = {"hospital", "refugio"}
+TIPOS = {"hospital", "refugio", "acopio"}
+NIVELES = {"mucho", "medio", "poco", "agotado"}
 MOTIVOS = {"no_existe", "duplicado", "falso", "otro"}
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
@@ -110,6 +111,10 @@ def init_db():
         value TEXT
     );
     """)
+    # Migración: añadir columna 'disponibilidad' si la base es de una versión anterior
+    cols = [r[1] for r in db.execute("PRAGMA table_info(centros)").fetchall()]
+    if "disponibilidad" not in cols:
+        db.execute("ALTER TABLE centros ADD COLUMN disponibilidad TEXT NOT NULL DEFAULT '{}'")
     db.commit()
     db.close()
 
@@ -204,6 +209,17 @@ def parse_necesidades(v):
     return [k for k in v if k in SUPPLIES][:len(SUPPLIES)]
 
 
+def parse_disponibilidad(v):
+    # Espera un objeto {insumo: nivel}; valida claves y niveles.
+    if not isinstance(v, dict):
+        return {}
+    out = {}
+    for k, lvl in v.items():
+        if k in SUPPLIES and lvl in NIVELES:
+            out[k] = lvl
+    return out
+
+
 def parse_coord(v, lo, hi):
     try:
         f = float(v)
@@ -219,6 +235,7 @@ def centro_public(row, with_verif=True):
         "id": row["id"], "nombre": row["nombre"], "tipo": row["tipo"],
         "zona": row["zona"] or "", "contacto": row["contacto"] or "",
         "estado": row["estado"], "necesidades": json.loads(row["necesidades"] or "[]"),
+        "disponibilidad": json.loads((row["disponibilidad"] if "disponibilidad" in row.keys() else "{}") or "{}"),
         "nota": row["nota"] or "", "actualizado": row["actualizado"],
         "protegido": bool(row["pw_hash"]),
     }
@@ -290,7 +307,11 @@ def register_centro():
     data = request.get_json(silent=True) or {}
     nombre = clean_str(data.get("nombre"), 80)
     tipo = data.get("tipo") if data.get("tipo") in TIPOS else "hospital"
-    estado = data.get("estado") if data.get("estado") in ESTADOS else None
+    es_acopio = (tipo == "acopio")
+    if es_acopio:
+        estado = "suficiente"   # los acopios no usan el semáforo; valor de relleno
+    else:
+        estado = data.get("estado") if data.get("estado") in ESTADOS else None
     if not nombre or not estado:
         return jsonify(error="datos"), 400
 
@@ -305,7 +326,8 @@ def register_centro():
 
     cid = "c" + secrets.token_hex(8)
     codigo = unique_code(db)
-    nec = parse_necesidades(data.get("necesidades")) if estado != "suficiente" else []
+    nec = [] if es_acopio else (parse_necesidades(data.get("necesidades")) if estado != "suficiente" else [])
+    disp = parse_disponibilidad(data.get("disponibilidad")) if es_acopio else {}
     lat = parse_coord(data.get("lat"), -90, 90)
     lng = parse_coord(data.get("lng"), -180, 180)
     pw = data.get("password") or ""
@@ -313,10 +335,10 @@ def register_centro():
     now = int(time.time() * 1000)
 
     db.execute("""INSERT INTO centros
-        (id,nombre,tipo,zona,contacto,estado,necesidades,nota,lat,lng,codigo,pw_hash,actualizado,creado)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (id,nombre,tipo,zona,contacto,estado,necesidades,disponibilidad,nota,lat,lng,codigo,pw_hash,actualizado,creado)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (cid, nombre, tipo, clean_str(data.get("zona"), 60), clean_str(data.get("contacto"), 40),
-         estado, json.dumps(nec), clean_str(data.get("nota"), 240),
+         estado, json.dumps(nec), json.dumps(disp), clean_str(data.get("nota"), 240),
          lat, lng, codigo, pw_hash, now, now))
     db.commit()
 
@@ -365,8 +387,22 @@ def update_centro(cid):
     data = request.get_json(silent=True) or {}
     nombre = clean_str(data.get("nombre", row["nombre"]), 80) or row["nombre"]
     tipo = data.get("tipo") if data.get("tipo") in TIPOS else row["tipo"]
-    estado = data.get("estado") if data.get("estado") in ESTADOS else row["estado"]
-    nec = parse_necesidades(data.get("necesidades")) if estado != "suficiente" else []
+    es_acopio = (tipo == "acopio")
+    if es_acopio:
+        estado = "suficiente"
+    else:
+        estado = data.get("estado") if data.get("estado") in ESTADOS else row["estado"]
+    nec = [] if es_acopio else (parse_necesidades(data.get("necesidades")) if estado != "suficiente" else [])
+    # disponibilidad: si viene en la petición se reemplaza; si no, se conserva la actual
+    if "disponibilidad" in data:
+        disp = parse_disponibilidad(data.get("disponibilidad")) if es_acopio else {}
+    else:
+        try:
+            disp = json.loads((row["disponibilidad"] if "disponibilidad" in row.keys() else "{}") or "{}")
+        except Exception:
+            disp = {}
+        if not es_acopio:
+            disp = {}
     zona = clean_str(data.get("zona", row["zona"]), 60)
     contacto = clean_str(data.get("contacto", row["contacto"]), 40)
     nota = clean_str(data.get("nota", row["nota"]), 240)
@@ -385,8 +421,8 @@ def update_centro(cid):
 
     now = int(time.time() * 1000)
     db.execute("""UPDATE centros SET nombre=?,tipo=?,zona=?,contacto=?,estado=?,
-        necesidades=?,nota=?,lat=?,lng=?,pw_hash=?,actualizado=? WHERE id=?""",
-        (nombre, tipo, zona, contacto, estado, json.dumps(nec), nota, lat, lng, pw_hash, now, cid))
+        necesidades=?,disponibilidad=?,nota=?,lat=?,lng=?,pw_hash=?,actualizado=? WHERE id=?""",
+        (nombre, tipo, zona, contacto, estado, json.dumps(nec), json.dumps(disp), nota, lat, lng, pw_hash, now, cid))
     db.commit()
     row = db.execute("SELECT * FROM centros WHERE id=?", (cid,)).fetchone()
     return jsonify(centro=centro_public(row))
