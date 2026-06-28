@@ -46,9 +46,9 @@ ADMIN_PASSWORD_ENV = os.environ.get("ADMIN_PASSWORD")  # puede ser None
 ALLOW_ORIGIN = os.environ.get("ALLOW_ORIGIN", "")
 
 SUPPLIES = {"agua", "alimentos", "medicamentos", "curacion",
-            "abrigo", "higiene", "energia", "combustible"}
+            "abrigo", "higiene", "energia", "combustible", "materiales"}
 ESTADOS = {"suficiente", "bajo", "urgente"}
-TIPOS = {"hospital", "refugio", "acopio"}
+TIPOS = {"hospital", "refugio", "acopio", "particular"}
 NIVELES = {"mucho", "medio", "poco", "agotado"}
 MOTIVOS = {"no_existe", "duplicado", "falso", "otro"}
 
@@ -503,7 +503,7 @@ def register_centro():
     data = request.get_json(silent=True) or {}
     nombre = clean_str(data.get("nombre"), 80)
     tipo = data.get("tipo") if data.get("tipo") in TIPOS else "hospital"
-    es_acopio = (tipo == "acopio")
+    es_acopio = tipo in ("acopio", "particular")   # tipos con inventario (disponibilidad)
     if es_acopio:
         estado = "suficiente"   # los acopios no usan el semáforo; valor de relleno
     else:
@@ -583,7 +583,7 @@ def update_centro(cid):
     data = request.get_json(silent=True) or {}
     nombre = clean_str(data.get("nombre", row["nombre"]), 80) or row["nombre"]
     tipo = data.get("tipo") if data.get("tipo") in TIPOS else row["tipo"]
-    es_acopio = (tipo == "acopio")
+    es_acopio = tipo in ("acopio", "particular")   # tipos con inventario (disponibilidad)
     if es_acopio:
         estado = "suficiente"
     else:

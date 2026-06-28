@@ -74,6 +74,7 @@
   .rail{flex:0 0 7px;}
   .rail.urgente{background:var(--urgente)} .rail.bajo{background:var(--bajo)} .rail.suficiente{background:var(--suf)}
   .rail.acopio{background:#0c6e84}
+  .rail.particular{background:#6b46c1}
   .card .body{padding:14px 15px; flex:1; min-width:0;}
   .card .top{display:flex; align-items:flex-start; gap:10px;}
   .card .name{font-size:16.5px; font-weight:800; letter-spacing:-.01em; word-break:break-word;}
@@ -84,6 +85,7 @@
   .pill.bajo{background:var(--bajo-bg); color:var(--bajo)}
   .pill.suficiente{background:var(--suf-bg); color:var(--suf)}
   .pill.acopio{background:#e6eff2; color:#0a6376}
+  .pill.particular{background:#ede9f8; color:#5b3aa0}
   .needs{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;}
   .need{font-size:12px; font-weight:700; background:var(--subtle); color:var(--ink);
     border:1px solid var(--line); border-radius:8px; padding:5px 9px;}
@@ -110,6 +112,7 @@
     color:var(--ink); border-radius:11px; padding:13px; font-size:15px; font-weight:700;}
   .seg button[aria-pressed="true"]{border-color:var(--brand); background:var(--brand); color:#fff;}
   .seg3{grid-template-columns:1fr 1fr 1fr;}
+  .seg4{grid-template-columns:1fr 1fr;}
   .seg3 button{padding:13px 6px; font-size:14.5px;}
   /* editor de disponibilidad (acopio) */
   .dispedit{display:grid; gap:9px;}
@@ -361,6 +364,7 @@ const SUPPLIES = [
   ["higiene",     "Higiene"],
   ["energia",     "Energía / baterías"],
   ["combustible", "Combustible"],
+  ["materiales",  "Materiales de construcción"],
 ];
 const SUPPLY_LABEL = Object.fromEntries(SUPPLIES);
 const MOTIVOS = [["no_existe","No existe"],["duplicado","Duplicado"],["falso","Falso"],["otro","Otro"]];
@@ -381,7 +385,14 @@ const NIVELES = [
 ];
 const NIVEL_LABEL = Object.fromEntries(NIVELES);
 const NIVEL_COL = {mucho:"#1b8a5a", medio:"#e07b00", poco:"#c25e00", agotado:"#9aa3ab"};
-function tipoLabelOf(t){ return t==="hospital"?"Hospital":(t==="refugio"?"Refugio":"Centro de acopio"); }
+function tipoLabelOf(t){
+  return t==="hospital" ? "Hospital"
+    : t==="refugio" ? "Refugio"
+    : t==="particular" ? "Particular"
+    : "Centro de acopio";
+}
+// Tipos que publican inventario (lo que TIENEN), no necesidades.
+function esInventario(t){ return t==="acopio" || t==="particular"; }
 
 /* ---------- Capa de datos: API del backend ---------- */
 const API_BASE = "";   // mismo origen; cámbialo si el front se aloja aparte (p. ej. "https://api.tudominio.org")
@@ -679,8 +690,8 @@ function miniMap(centros){
   const col={urgente:"#d62828", bajo:"#e07b00", suficiente:"#1b8a5a"};
   const bounds=[];
   for(const c of pts){
-    const fill = c.tipo==="acopio" ? "#0c6e84" : (col[c.estado]||"#888");
-    const etiqueta = c.tipo==="acopio" ? "Centro de acopio" : (STATUS[c.estado]?STATUS[c.estado].label:"");
+    const fill = c.tipo==="acopio" ? "#0c6e84" : (c.tipo==="particular" ? "#6b46c1" : (col[c.estado]||"#888"));
+    const etiqueta = esInventario(c.tipo) ? tipoLabelOf(c.tipo) : (STATUS[c.estado]?STATUS[c.estado].label:"");
     L.circleMarker([c.lat,c.lng], {radius:8, color:"#fff", weight:2,
       fillColor:fill, fillOpacity:1})
       .bindPopup("<b>"+esc(c.nombre)+"</b><br>"+etiqueta)
@@ -802,7 +813,7 @@ function landing(){
           el("div",{class:"ic", style:"background:var(--brand)"}, el("span",{html:"&#43;"})),
           el("div",{},
             el("div",{class:"t"}, "Soy un centro"),
-            el("div",{class:"d"}, "Hospital, refugio o centro de acopio. Marca tu estado o lo que tienes disponible.")
+            el("div",{class:"d"}, "Hospital, refugio, acopio o particular. Marca tu estado o lo que tienes para donar.")
           ),
           el("div",{class:"chev", html:"&#8250;"})
         ),
@@ -896,7 +907,7 @@ function computeView(list){
     if(state.filterTipo && c.tipo!==state.filterTipo) return false;
     if(state.filterSupply){
       const k = state.filterSupply;
-      if(c.tipo==="acopio"){
+      if(esInventario(c.tipo)){
         const lvl = (c.disponibilidad||{})[k];
         if(!(lvl && lvl!=="agotado")) return false;
       } else {
@@ -923,7 +934,7 @@ function voluntario(){
   let list = state.centros.slice();
   if(state.demo) list = list.concat(DEMO);
   const counts = {urgente:0,bajo:0,suficiente:0};
-  list.forEach(c=>{ if(c.tipo!=="acopio" && counts[c.estado]!==undefined) counts[c.estado]++; });
+  list.forEach(c=>{ if(!esInventario(c.tipo) && counts[c.estado]!==undefined) counts[c.estado]++; });
 
   const main = el("main",{});
   if(state.loadError){
@@ -959,6 +970,7 @@ function voluntario(){
   filterRow.appendChild(chip("Hospitales", state.filterTipo==="hospital", ()=>{state.filterTipo=state.filterTipo==="hospital"?null:"hospital";render();}, "tipo"));
   filterRow.appendChild(chip("Refugios", state.filterTipo==="refugio", ()=>{state.filterTipo=state.filterTipo==="refugio"?null:"refugio";render();}, "tipo"));
   filterRow.appendChild(chip("Acopios", state.filterTipo==="acopio", ()=>{state.filterTipo=state.filterTipo==="acopio"?null:"acopio";render();}, "tipo"));
+  filterRow.appendChild(chip("Particulares", state.filterTipo==="particular", ()=>{state.filterTipo=state.filterTipo==="particular"?null:"particular";render();}, "tipo"));
   SUPPLIES.forEach(([k,l])=> filterRow.appendChild(chip(l, state.filterSupply===k, ()=>{state.filterSupply=state.filterSupply===k?null:k;render();}, "ins")));
   main.appendChild(filterRow);
 
@@ -1021,7 +1033,7 @@ function voluntario(){
 }
 
 function facilityCard(c){
-  const esAcopio = (c.tipo==="acopio");
+  const esAcopio = esInventario(c.tipo);
   const st = STATUS[c.estado] || STATUS.bajo;
   const tipoLabel = tipoLabelOf(c.tipo);
   const body = el("div",{class:"body"},
@@ -1032,7 +1044,7 @@ function facilityCard(c){
         c.contacto ? el("div",{class:"meta contacto"}, el("span",{html:"&#128222; "}), c.contacto) : null
       ),
       esAcopio
-        ? el("div",{class:"pill acopio"}, "Acopio")
+        ? el("div",{class:"pill "+c.tipo}, c.tipo==="particular" ? "Particular" : "Acopio")
         : el("div",{class:"pill "+c.estado}, st.label)
     )
   );
@@ -1121,7 +1133,7 @@ function facilityCard(c){
   } else {
     body.appendChild(el("div",{class:"vrow"}, el("span",{class:"vbadge none"}, "Ejemplo")));
   }
-  return el("div",{class:"card"}, el("div",{class:"rail "+(esAcopio?"acopio":c.estado)}), body);
+  return el("div",{class:"card"}, el("div",{class:"rail "+(esAcopio?c.tipo:c.estado)}), body);
 }
 
 // Panel para reportar un centro (motivo + texto opcional). Usa variables locales
@@ -1226,7 +1238,7 @@ function fotoField(c){
     box.appendChild(grid);
   }
   if(c.fotos.length < MAX){
-    const input = el("input",{type:"file", accept:"image/*", capture:"environment", style:"display:none",
+    const input = el("input",{type:"file", accept:"image/*", style:"display:none",
       onchange:async(e)=>{
         const file = e.target.files && e.target.files[0];
         if(!file) return;
@@ -1238,7 +1250,7 @@ function fotoField(c){
           if(r && r.centro) c.fotos = r.centro.fotos || [];
           await refresh(); render(); toast("Foto agregada");
         }catch(err){
-          if(lbl) lbl.textContent = "Agregar foto";
+          if(lbl) lbl.textContent = c.fotos.length ? ("Agregar otra foto ("+c.fotos.length+"/"+MAX+")") : "Tomar o elegir una foto";
           toast(err.status===401 ? "Tu sesión expiró; vuelve a entrar con tu código"
                 : err.status===409 ? "Ya alcanzaste el máximo de "+MAX+" fotos"
                 : err.status===413 ? "La foto pesa demasiado, intenta otra"
@@ -1246,7 +1258,7 @@ function fotoField(c){
         }
       }});
     const btn = el("button",{class:"linkbtn fotoadd", style:"display:block", onclick:()=>input.click()},
-      c.fotos.length ? ("Agregar otra foto ("+c.fotos.length+"/"+MAX+")") : "Agregar foto");
+      c.fotos.length ? ("Agregar otra foto ("+c.fotos.length+"/"+MAX+")") : "Tomar o elegir una foto");
     box.appendChild(input);
     box.appendChild(btn);
   } else {
@@ -1449,7 +1461,7 @@ function centroForm(){
     try{
       const payload = {nombre:c.nombre, tipo:c.tipo, zona:c.zona, contacto:c.contacto,
         estado:c.estado, necesidades:c.necesidades,
-        disponibilidad:(c.tipo==="acopio" ? (c.disponibilidad||{}) : {}), nota:c.nota,
+        disponibilidad:(esInventario(c.tipo) ? (c.disponibilidad||{}) : {}), nota:c.nota,
         lat:(typeof c.lat==="number"?c.lat:null), lng:(typeof c.lng==="number"?c.lng:null)};
       if("lat" in c || "lng" in c){ payload.lat=(typeof c.lat==="number"?c.lat:null); payload.lng=(typeof c.lng==="number"?c.lng:null); }
       if(c._pw && c._pw.length>0) payload.newPassword=c._pw;
@@ -1500,16 +1512,21 @@ function centroForm(){
         )
       ));
     }
-    const nombre = el("input",{type:"text", value:c.nombre, placeholder:"p. ej. Hospital Central", maxlength:"80",
+    const nombre = el("input",{type:"text", value:c.nombre,
+      placeholder: c.tipo==="particular" ? "p. ej. Donación de María" : "p. ej. Hospital Central", maxlength:"80",
       oninput:e=>{ c.nombre=e.target.value; c._allowDup=false; }});
-    main.appendChild(el("div",{class:"field"}, el("label",{}, "Nombre del centro"), nombre));
+    main.appendChild(el("div",{class:"field"},
+      el("label",{}, c.tipo==="particular" ? "Nombre o referencia" : "Nombre del centro"), nombre));
 
-    const tipoSeg = el("div",{class:"seg seg3"},
+    const tipoSeg = el("div",{class:"seg seg4"},
       el("button",{"aria-pressed":c.tipo==="hospital"?"true":"false", onclick:()=>{c.tipo="hospital";render();}}, "Hospital"),
       el("button",{"aria-pressed":c.tipo==="refugio"?"true":"false", onclick:()=>{c.tipo="refugio";render();}}, "Refugio"),
-      el("button",{"aria-pressed":c.tipo==="acopio"?"true":"false", onclick:()=>{c.tipo="acopio"; if(!c.disponibilidad) c.disponibilidad={}; render();}}, "Acopio")
+      el("button",{"aria-pressed":c.tipo==="acopio"?"true":"false", onclick:()=>{c.tipo="acopio"; if(!c.disponibilidad) c.disponibilidad={}; render();}}, "Acopio"),
+      el("button",{"aria-pressed":c.tipo==="particular"?"true":"false", onclick:()=>{c.tipo="particular"; if(!c.disponibilidad) c.disponibilidad={}; render();}}, "Particular")
     );
-    main.appendChild(el("div",{class:"field"}, el("label",{}, "Tipo"), tipoSeg));
+    main.appendChild(el("div",{class:"field"}, el("label",{}, "Tipo"),
+      el("div",{class:"hint", style:"margin:-4px 2px 8px"}, "“Particular” es para personas con insumos para donar."),
+      tipoSeg));
 
     const zona = el("input",{type:"text", value:c.zona, placeholder:"Barrio, sector o ciudad", maxlength:"60",
       oninput:e=>c.zona=e.target.value});
@@ -1536,22 +1553,22 @@ function centroForm(){
     ));
   }
 
-  const esAcopio = (c.tipo==="acopio");
+  const esAcopio = esInventario(c.tipo);
 
   if(esAcopio){
     if(!c.disponibilidad) c.disponibilidad = {};
     // Editor de disponibilidad: por cada insumo, un nivel (o sin marcar)
     main.appendChild(el("div",{class:"field"},
-      el("label",{}, "¿Qué insumos tienen disponibles? ", el("span",{class:"hint"},"(marca el nivel; deja en blanco lo que no tengas)")),
+      el("label",{}, "¿Qué insumos tienes disponibles? ", el("span",{class:"hint"},"(marca el nivel; deja en blanco lo que no tengas)")),
       dispEditor(c)));
 
-    const nota = el("textarea",{placeholder:"p. ej. ~200 botellas de agua; entregamos en horario de tarde", maxlength:"240",
+    const nota = el("textarea",{placeholder:"p. ej. ~200 botellas de agua; entrego en horario de tarde", maxlength:"240",
       oninput:e=>c.nota=e.target.value}); nota.value=c.nota||"";
     main.appendChild(el("div",{class:"field"}, el("label",{}, "Nota ", el("span",{class:"hint"},"(opcional)")), nota));
 
     if(existente){
       main.appendChild(el("div",{class:"field"},
-        el("label",{}, "Foto de los insumos ", el("span",{class:"hint"},"(opcional)")),
+        el("label",{}, "Fotos de los insumos ", el("span",{class:"hint"},"(opcional)")),
         fotoField(c)));
     }
   } else {
@@ -1615,7 +1632,7 @@ function centroForm(){
     }
   }}, existente ? "Guardar cambios" : "Registrar y publicar");
 
-  main.appendChild(el("div",{class:"updnote"}, valid?(existente?"Listo para guardar":"Listo para registrar"):(esAcopio?"Pon un nombre para tu centro de acopio":"Pon un nombre y elige un estado")));
+  main.appendChild(el("div",{class:"updnote"}, valid?(existente?"Listo para guardar":"Listo para registrar"):(esAcopio?"Pon un nombre para tu publicación":"Pon un nombre y elige un estado")));
   main.appendChild(el("div",{class:"cta"}, save));
 
   return el("div",{class:"wrap"},
@@ -1704,7 +1721,7 @@ function adminScreen(){
   }
   list.forEach(c=>{
     const nrep = c.reportes || 0;
-    const esAcopio = c.tipo==="acopio";
+    const esAcopio = esInventario(c.tipo);
     const dispCount = esAcopio ? Object.values(c.disponibilidad||{}).filter(v=>v!=="agotado").length : 0;
     const meta=[ tipoLabelOf(c.tipo), c.zona,
       esAcopio ? (dispCount+" insumo"+(dispCount===1?"":"s")+" disponible"+(dispCount===1?"":"s")) : STATUS[c.estado]?.label,
