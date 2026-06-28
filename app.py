@@ -51,6 +51,49 @@ ESTADOS = {"suficiente", "bajo", "urgente"}
 TIPOS = {"hospital", "refugio", "acopio"}
 NIVELES = {"mucho", "medio", "poco", "agotado"}
 MOTIVOS = {"no_existe", "duplicado", "falso", "otro"}
+
+# Contenido por defecto de la sección de Ayuda (editable desde el panel de admin).
+DEFAULT_AYUDA = {
+    "intro": ("Conecta a quien necesita insumos con quien los tiene durante la emergencia. "
+              "No requiere instalar nada ni crear cuenta, y funciona desde el teléfono aunque la señal sea baja."),
+    "centro": [
+        "Toca \u201cSoy un centro\u201d y elige Hospital, Refugio o Centro de acopio.",
+        "Hospital o refugio: marca tu estado (Suficiente, Bajo o Urgente) y qué insumos necesitas. "
+        "Centro de acopio: marca qué insumos tienes disponibles y en qué nivel.",
+        "Opcional pero recomendado: agrega tu ubicación, un teléfono de contacto y una contraseña "
+        "para que solo tú puedas modificar tu centro.",
+        "Guarda. Recibirás un código para volver a actualizar tu centro desde otro teléfono.",
+    ],
+    "voluntario": [
+        "Toca \u201cSoy voluntario\u201d para ver el mapa y la lista de centros.",
+        "Usa la barra de búsqueda para encontrar un centro por nombre o un insumo por palabra "
+        "(por ejemplo \u201cjeringas\u201d).",
+        "Refina con los filtros: por tipo (hospitales, refugios, acopios) o por insumo.",
+        "Usa \u201cCómo llegar\u201d para la ruta, y ayuda a la comunidad verificando o reportando centros.",
+        "En un centro de acopio, toca \u201cCoordinar entrega\u201d para contactarlo y acordar el envío.",
+    ],
+    "faqs": [
+        {"q": "¿Necesito instalar algo o crear una cuenta?",
+         "a": "No. Funciona directamente en el navegador del teléfono o la computadora."},
+        {"q": "¿Tiene costo?", "a": "No, el uso de la aplicación es gratuito."},
+        {"q": "Olvidé mi código o mi contraseña. ¿Qué hago?",
+         "a": "Escríbele al administrador usando el enlace de Contacto al final de la página. "
+              "Puede recuperarte el código o restablecer tu contraseña."},
+        {"q": "¿Quién puede ver lo que publico?",
+         "a": "Todos los voluntarios que usan la app. Por eso no debes incluir datos personales sensibles."},
+        {"q": "¿Qué fotos puedo subir a un acopio?",
+         "a": "Solo fotos de los insumos. Evita rostros, documentos o direcciones visibles, por privacidad "
+              "y seguridad. Se permiten hasta 3 fotos."},
+        {"q": "¿Cómo coordino una entrega con un centro de acopio?",
+         "a": "Abre su tarjeta y toca \u201cCoordinar entrega\u201d. Podrás llamar o escribir por WhatsApp, "
+              "y abrir Yummy si necesitas un envío."},
+        {"q": "Vi un centro falso o duplicado. ¿Cómo lo reporto?",
+         "a": "En la tarjeta del centro toca \u201cReportar este centro\u201d, elige el motivo y, si quieres, "
+              "agrega un comentario. El administrador lo revisará."},
+        {"q": "¿Funciona con mala señal?",
+         "a": "Sí. La app está diseñada para consumir pocos datos y cargar incluso con conexión limitada."},
+    ],
+}
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 app = Flask(__name__, static_folder=None)
@@ -307,6 +350,49 @@ def cors_preflight(_p):
 @app.get("/api/health")
 def health():
     return jsonify(ok=True)
+
+
+def get_ayuda():
+    raw = meta_get("ayuda")
+    if not raw:
+        return DEFAULT_AYUDA
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else DEFAULT_AYUDA
+    except Exception:
+        return DEFAULT_AYUDA
+
+
+def sanitize_ayuda(data):
+    """Limpia y acota el contenido de ayuda enviado por el admin."""
+    if not isinstance(data, dict):
+        data = {}
+    intro = clean_str(data.get("intro"), 1200) or ""
+    def lista_pasos(v):
+        out = []
+        if isinstance(v, list):
+            for s in v[:20]:
+                s = clean_str(s, 400)
+                if s:
+                    out.append(s)
+        return out
+    centro = lista_pasos(data.get("centro"))
+    voluntario = lista_pasos(data.get("voluntario"))
+    faqs = []
+    if isinstance(data.get("faqs"), list):
+        for item in data["faqs"][:40]:
+            if not isinstance(item, dict):
+                continue
+            q = clean_str(item.get("q"), 240)
+            a = clean_str(item.get("a"), 1500)
+            if q and a:
+                faqs.append({"q": q, "a": a})
+    return {"intro": intro, "centro": centro, "voluntario": voluntario, "faqs": faqs}
+
+
+@app.get("/api/ayuda")
+def api_ayuda():
+    return jsonify(ayuda=get_ayuda())
 
 
 # --------------------------------------------------------------------------- #
@@ -635,6 +721,24 @@ def admin_login():
     if not check_admin_password(data.get("password") or ""):
         return jsonify(error="password"), 401
     return jsonify(token=make_token("admin", {"admin": True}))
+
+
+@app.put("/api/admin/ayuda")
+@require_admin
+def admin_save_ayuda():
+    data = request.get_json(silent=True) or {}
+    contenido = sanitize_ayuda(data.get("ayuda") if "ayuda" in data else data)
+    meta_set("ayuda", json.dumps(contenido, ensure_ascii=False))
+    return jsonify(ayuda=contenido)
+
+
+@app.delete("/api/admin/ayuda")
+@require_admin
+def admin_reset_ayuda():
+    db = get_db()
+    db.execute("DELETE FROM meta WHERE key=?", ("ayuda",))
+    db.commit()
+    return jsonify(ayuda=DEFAULT_AYUDA)
 
 
 @app.get("/api/admin/centros")

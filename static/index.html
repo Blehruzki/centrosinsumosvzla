@@ -176,6 +176,22 @@
   .faq summary::before{content:"+"; display:inline-block; width:18px; color:var(--brand-ink); font-weight:800;}
   .faq[open] summary::before{content:"–";}
   .faqa{font-size:13.5px; line-height:1.55; color:var(--muted); margin:8px 0 2px 18px;}
+  /* editor de ayuda (admin) */
+  .editta{width:100%; box-sizing:border-box; border:1px solid var(--line); border-radius:10px; padding:10px;
+    font:inherit; font-size:14px; resize:vertical; min-height:64px; background:var(--surface); color:var(--ink);}
+  .editta.sm{min-height:48px;}
+  .editq{width:100%; box-sizing:border-box; border:1px solid var(--line); border-radius:10px; padding:10px;
+    font:inherit; font-size:14px; font-weight:700; background:var(--surface); color:var(--ink);}
+  .editrow{display:flex; gap:8px; align-items:flex-start; margin-bottom:8px;}
+  .editn{flex:0 0 auto; width:22px; height:22px; border-radius:50%; background:var(--brand); color:#fff;
+    font-size:12.5px; font-weight:800; display:flex; align-items:center; justify-content:center; margin-top:8px;}
+  .editctrl{display:flex; flex-direction:column; gap:4px; flex:0 0 auto;}
+  .miniarrow,.minidel{width:30px; height:24px; border:1px solid var(--line); background:var(--surface); cursor:pointer;
+    border-radius:7px; font-size:13px; font-weight:800; color:var(--muted); line-height:1;}
+  .minidel{color:var(--urgente); border-color:#f1b0ab;}
+  .miniarrow:disabled{opacity:.4; cursor:default;}
+  .faqedit{padding:11px; border:1px solid var(--line); border-radius:11px; margin-bottom:10px; background:var(--subtle);}
+  .faqedit .editta{margin-top:8px;}
   /* big status buttons */
   .status3{display:grid; gap:10px;}
   .sbtn{appearance:none; cursor:pointer; text-align:left; width:100%; border-radius:13px; padding:16px 16px;
@@ -397,6 +413,9 @@ const store = {
   async adminGetCode(token, id){ return (await api("/admin/centros/"+id+"/codigo",{headers:{Authorization:"Bearer "+token}})).codigo; },
   async adminRegenCode(token, id){ return (await api("/admin/centros/"+id+"/codigo",{method:"POST", headers:{Authorization:"Bearer "+token}})).codigo; },
   async adminSetPassword(token, id, password){ return await api("/admin/centros/"+id+"/password",{method:"POST", headers:{Authorization:"Bearer "+token}, body:JSON.stringify({password})}); },
+  async getAyuda(){ const d=await api("/ayuda"); return d.ayuda; },
+  async adminSaveAyuda(token, ayuda){ const d=await api("/admin/ayuda",{method:"PUT", headers:{Authorization:"Bearer "+token}, body:JSON.stringify({ayuda})}); return d.ayuda; },
+  async adminResetAyuda(token){ const d=await api("/admin/ayuda",{method:"DELETE", headers:{Authorization:"Bearer "+token}}); return d.ayuda; },
 };
 
 /* ---------- Estado de la app ---------- */
@@ -419,6 +438,8 @@ let state = {
   filterSupply: null,    // clave de insumo o null
   filterTipo: null,      // "hospital" | "refugio" | "acopio" | null
   searchText: "",        // texto libre de búsqueda (nombre, zona, nota, insumos)
+  ayuda: null,           // contenido editable de la sección de ayuda (se carga del servidor)
+  ayudaEdit: null,       // copia de trabajo mientras el admin edita la ayuda
   myLoc: null,           // ubicación del voluntario (en memoria)
   sortBy: "urgencia",    // "urgencia" | "cercania"
   showMap: false,
@@ -1553,10 +1574,17 @@ function adminScreen(){
     el("h2",{style:"font-size:23px"}, "Centros registrados ("+list.length+")"),
     el("p",{}, "Revisa los reportes y elimina los que no sean reales.")
   ));
-  main.appendChild(el("button",{class:"smallbtn", style:"margin:0 0 14px", onclick:async()=>{
-    try{ state.adminList=await store.adminList(state.adminToken); render(); toast("Lista actualizada"); }
-    catch(_){ toast("No se pudo actualizar"); }
-  }}, "Actualizar lista"));
+  main.appendChild(el("div",{style:"display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px"},
+    el("button",{class:"smallbtn", onclick:async()=>{
+      try{ state.adminList=await store.adminList(state.adminToken); render(); toast("Lista actualizada"); }
+      catch(_){ toast("No se pudo actualizar"); }
+    }}, "Actualizar lista"),
+    el("button",{class:"smallbtn", onclick:async()=>{
+      try{ state.ayuda = await store.getAyuda(); }catch(_){}
+      state.ayudaEdit = state.ayuda ? JSON.parse(JSON.stringify(state.ayuda)) : null;
+      state.screen="adminAyuda"; render();
+    }}, "Editar sección de ayuda")
+  ));
   if(!list.length){
     main.appendChild(el("div",{class:"empty"}, el("div",{class:"big", html:"&#9737;"}),
       el("h3",{}, "No hay centros"), el("p",{}, "Aún nadie se ha registrado.")));
@@ -1675,43 +1703,43 @@ function guardadoScreen(){
 /* ---------- Render raíz ---------- */
 let _lastScreen = null;
 /* ----- Ayuda / Cómo usar ----- */
+async function cargarAyuda(force){
+  if(state.ayuda && !force) return;
+  try{ state.ayuda = await store.getAyuda(); }
+  catch(_){ if(!state.ayuda) state.ayuda = null; }
+  if(state.screen==="ayuda" || state.screen==="admin") render();
+}
 function ayudaScreen(){
+  const a = state.ayuda;
   const main = el("main",{});
   const sec = (titulo, ...kids)=> main.appendChild(el("div",{class:"helpsec"}, el("h3",{}, titulo), ...kids));
   const paso = (n, txt)=> el("div",{class:"helpstep"}, el("span",{class:"hn"}, String(n)), el("span",{}, txt));
-  const faq = (q, a)=> el("details",{class:"faq"}, el("summary",{}, q), el("div",{class:"faqa"}, a));
+  const faqEl = (q, ans)=> el("details",{class:"faq"}, el("summary",{}, q), el("div",{class:"faqa"}, ans));
+
+  if(!a){
+    cargarAyuda();
+    main.appendChild(el("div",{class:"lede", style:"padding-top:12px"},
+      el("h2",{style:"font-size:23px"}, "Cómo usar la app"),
+      el("p",{}, "Cargando…")));
+    return el("div",{class:"wrap"}, topbar("Ayuda","Cómo funciona y preguntas frecuentes",()=>{state.screen="landing";render();}), main);
+  }
 
   main.appendChild(el("div",{class:"lede", style:"padding-top:12px"},
     el("h2",{style:"font-size:23px"}, "Cómo usar la app"),
-    el("p",{}, "Conecta a quien necesita insumos con quien los tiene durante la emergencia. No requiere instalar nada ni crear cuenta, y funciona desde el teléfono aunque la señal sea baja.")));
+    a.intro ? el("p",{}, a.intro) : null));
 
-  sec("Si eres un centro",
-    paso(1, "Toca “Soy un centro” y elige Hospital, Refugio o Centro de acopio."),
-    paso(2, "Hospital o refugio: marca tu estado (Suficiente, Bajo o Urgente) y qué insumos necesitas. Centro de acopio: marca qué insumos tienes disponibles y en qué nivel."),
-    paso(3, "Opcional pero recomendado: agrega tu ubicación, un teléfono de contacto y una contraseña para que solo tú puedas modificar tu centro."),
-    paso(4, "Guarda. Recibirás un código para volver a actualizar tu centro desde otro teléfono."));
-
-  sec("Si eres voluntario",
-    paso(1, "Toca “Soy voluntario” para ver el mapa y la lista de centros."),
-    paso(2, "Usa la barra de búsqueda para encontrar un centro por nombre o un insumo por palabra (por ejemplo “jeringas”)."),
-    paso(3, "Refina con los filtros: por tipo (hospitales, refugios, acopios) o por insumo."),
-    paso(4, "Usa “Cómo llegar” para la ruta, y ayuda a la comunidad verificando o reportando centros."),
-    paso(5, "En un centro de acopio, toca “Coordinar entrega” para contactarlo y acordar el envío."));
+  if((a.centro||[]).length)
+    sec("Si eres un centro", ...a.centro.map((t,i)=> paso(i+1, t)));
+  if((a.voluntario||[]).length)
+    sec("Si eres voluntario", ...a.voluntario.map((t,i)=> paso(i+1, t)));
 
   sec("Qué significan los colores y niveles",
     el("div",{class:"helplist"},
       el("div",{}, el("b",{style:"color:var(--urgente)"}, "Urgente"), " · ", el("b",{style:"color:var(--bajo)"}, "Bajo"), " · ", el("b",{style:"color:var(--suf)"}, "Suficiente"), " — estado de un hospital o refugio."),
       el("div",{style:"margin-top:6px"}, el("b",{style:"color:#1b8a5a"}, "Mucho"), " / ", el("b",{style:"color:#e07b00"}, "Medio"), " / ", el("b",{style:"color:#c25e00"}, "Poco"), " — lo que tiene un acopio. ", el("b",{style:"color:var(--muted)"}, "Agotado"), " aparece en gris: ya no está disponible.")));
 
-  sec("Preguntas frecuentes",
-    faq("¿Necesito instalar algo o crear una cuenta?", "No. Funciona directamente en el navegador del teléfono o la computadora."),
-    faq("¿Tiene costo?", "No, el uso de la aplicación es gratuito."),
-    faq("Olvidé mi código o mi contraseña. ¿Qué hago?", "Escríbele al administrador usando el enlace de Contacto al final de la página. Puede recuperarte el código o restablecer tu contraseña."),
-    faq("¿Quién puede ver lo que publico?", "Todos los voluntarios que usan la app. Por eso no debes incluir datos personales sensibles."),
-    faq("¿Qué fotos puedo subir a un acopio?", "Solo fotos de los insumos. Evita rostros, documentos o direcciones visibles, por privacidad y seguridad. Se permiten hasta 3 fotos."),
-    faq("¿Cómo coordino una entrega con un centro de acopio?", "Abre su tarjeta y toca “Coordinar entrega”. Podrás llamar o escribir por WhatsApp, y abrir Yummy si necesitas un envío."),
-    faq("Vi un centro falso o duplicado. ¿Cómo lo reporto?", "En la tarjeta del centro toca “Reportar este centro”, elige el motivo y, si quieres, agrega un comentario. El administrador lo revisará."),
-    faq("¿Funciona con mala señal?", "Sí. La app está diseñada para consumir pocos datos y cargar incluso con conexión limitada."));
+  if((a.faqs||[]).length)
+    sec("Preguntas frecuentes", ...a.faqs.map(f=> faqEl(f.q, f.a)));
 
   main.appendChild(footnote());
 
@@ -1720,6 +1748,104 @@ function ayudaScreen(){
       ()=>{ state.screen="landing"; render(); }),
     main
   );
+}
+
+/* ----- Editor de la sección de ayuda (admin) ----- */
+function adminAyudaScreen(){
+  if(!state.adminToken){ state.screen="admin"; return adminScreen(); }
+  const volver = ()=>{ state.screen="admin"; render(); };
+  const main = el("main",{});
+  if(!state.ayudaEdit){
+    main.appendChild(el("div",{class:"lede", style:"padding-top:12px"}, el("h2",{}, "Editar ayuda"), el("p",{}, "Cargando…")));
+    return el("div",{class:"wrap"}, topbar("Editar ayuda", null, volver), main);
+  }
+  const a = state.ayudaEdit;
+  if(!Array.isArray(a.centro)) a.centro=[];
+  if(!Array.isArray(a.voluntario)) a.voluntario=[];
+  if(!Array.isArray(a.faqs)) a.faqs=[];
+
+  main.appendChild(el("div",{class:"lede", style:"padding-top:12px"},
+    el("h2",{style:"font-size:22px"}, "Editar ayuda"),
+    el("p",{}, "Cambia los textos y guarda. Se actualiza al instante para todos.")));
+
+  const intro = el("textarea",{class:"editta", placeholder:"Texto de introducción o aviso", maxlength:"1200",
+    oninput:e=>{ a.intro=e.target.value; }});
+  intro.value = a.intro||"";
+  main.appendChild(el("div",{class:"helpsec"}, el("h3",{}, "Introducción / aviso"), intro));
+
+  function listaEditor(titulo, arr, placeholder){
+    const sec = el("div",{class:"helpsec"}, el("h3",{}, titulo));
+    arr.forEach((txt, i)=>{
+      const row = el("div",{class:"editrow"});
+      const inp = el("textarea",{class:"editta sm", placeholder:placeholder, maxlength:"400",
+        oninput:e=>{ arr[i]=e.target.value; }});
+      inp.value = txt;
+      row.appendChild(el("span",{class:"editn"}, String(i+1)));
+      row.appendChild(inp);
+      const ctrl = el("div",{class:"editctrl"});
+      ctrl.appendChild(el("button",{class:"miniarrow", title:"Subir", disabled:i===0,
+        onclick:()=>{ if(i>0){ const t=arr[i-1]; arr[i-1]=arr[i]; arr[i]=t; render(); } }}, "↑"));
+      ctrl.appendChild(el("button",{class:"miniarrow", title:"Bajar", disabled:i===arr.length-1,
+        onclick:()=>{ if(i<arr.length-1){ const t=arr[i+1]; arr[i+1]=arr[i]; arr[i]=t; render(); } }}, "↓"));
+      ctrl.appendChild(el("button",{class:"minidel", title:"Quitar",
+        onclick:()=>{ arr.splice(i,1); render(); }}, "✕"));
+      row.appendChild(ctrl);
+      sec.appendChild(row);
+    });
+    sec.appendChild(el("button",{class:"smallbtn", style:"margin-top:8px",
+      onclick:()=>{ arr.push(""); render(); }}, "＋ Agregar paso"));
+    main.appendChild(sec);
+  }
+  listaEditor("Pasos — Si eres un centro", a.centro, "Describe el paso");
+  listaEditor("Pasos — Si eres voluntario", a.voluntario, "Describe el paso");
+
+  const faqSec = el("div",{class:"helpsec"}, el("h3",{}, "Preguntas frecuentes"));
+  a.faqs.forEach((f, i)=>{
+    const card = el("div",{class:"faqedit"});
+    const top = el("div",{class:"editrow"});
+    const q = el("input",{type:"text", class:"editq", placeholder:"Pregunta", maxlength:"240",
+      oninput:e=>{ f.q=e.target.value; }});
+    q.value = f.q||"";
+    top.appendChild(q);
+    const ctrl = el("div",{class:"editctrl"});
+    ctrl.appendChild(el("button",{class:"miniarrow", title:"Subir", disabled:i===0,
+      onclick:()=>{ if(i>0){ const t=a.faqs[i-1]; a.faqs[i-1]=a.faqs[i]; a.faqs[i]=t; render(); } }}, "↑"));
+    ctrl.appendChild(el("button",{class:"miniarrow", title:"Bajar", disabled:i===a.faqs.length-1,
+      onclick:()=>{ if(i<a.faqs.length-1){ const t=a.faqs[i+1]; a.faqs[i+1]=a.faqs[i]; a.faqs[i]=t; render(); } }}, "↓"));
+    ctrl.appendChild(el("button",{class:"minidel", title:"Quitar",
+      onclick:()=>{ a.faqs.splice(i,1); render(); }}, "✕"));
+    top.appendChild(ctrl);
+    card.appendChild(top);
+    const ans = el("textarea",{class:"editta sm", placeholder:"Respuesta", maxlength:"1500",
+      oninput:e=>{ f.a=e.target.value; }});
+    ans.value = f.a||"";
+    card.appendChild(ans);
+    faqSec.appendChild(card);
+  });
+  faqSec.appendChild(el("button",{class:"smallbtn", style:"margin-top:8px",
+    onclick:()=>{ a.faqs.push({q:"",a:""}); render(); }}, "＋ Agregar pregunta"));
+  main.appendChild(faqSec);
+
+  main.appendChild(el("div",{class:"cta", style:"display:grid; gap:10px"},
+    el("button",{class:"btn", onclick:async()=>{
+      try{
+        state.ayuda = await store.adminSaveAyuda(state.adminToken, a);
+        state.ayudaEdit = JSON.parse(JSON.stringify(state.ayuda));
+        toast("Ayuda actualizada"); volver();
+      }catch(err){ toast(err.status===401?"Sesión de admin expirada":"No se pudo guardar"); }
+    }}, "Guardar cambios"),
+    el("button",{class:"smallbtn", onclick:async()=>{
+      if(!confirm("Esto descarta tus cambios y vuelve al texto original de la app. ¿Continuar?")) return;
+      try{
+        state.ayuda = await store.adminResetAyuda(state.adminToken);
+        state.ayudaEdit = JSON.parse(JSON.stringify(state.ayuda));
+        render(); toast("Se restauró el texto original");
+      }catch(err){ toast(err.status===401?"Sesión de admin expirada":"No se pudo restaurar"); }
+    }}, "Restaurar texto original"),
+    el("button",{class:"smallbtn", onclick:volver}, "Cancelar")
+  ));
+
+  return el("div",{class:"wrap"}, topbar("Editar ayuda", "Cambios visibles para todos", volver), main);
 }
 
 function render(){
@@ -1735,6 +1861,7 @@ function render(){
   else if(state.screen==="centro") node=centroForm();
   else if(state.screen==="guardado") node=guardadoScreen();
   else if(state.screen==="ayuda") node=ayudaScreen();
+  else if(state.screen==="adminAyuda") node=adminAyudaScreen();
   else node=landing();
   root.replaceWith(node);
   node.id="app";
