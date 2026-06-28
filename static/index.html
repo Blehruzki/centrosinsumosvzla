@@ -658,7 +658,7 @@ function miniMap(centros){
   // Encuadrar solo la primera vez (no molestar el zoom del usuario en refrescos)
   if(!_fitDone && bounds.length){
     if(bounds.length===1) _map.setView(bounds[0], 14);
-    else _map.fitBounds(bounds, {padding:[24,24]});
+    else _map.fitBounds(bounds, {padding:[24,24], maxZoom:15});
     _fitDone = true;
   }
   // Leyenda
