@@ -39,6 +39,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "data", "insumos.db"))
 FOTOS_DIR = os.environ.get("FOTOS_DIR", os.path.join(os.path.dirname(DB_PATH), "fotos"))
 FOTO_MAX_BYTES = 700 * 1024   # tope tras el encogido en el teléfono (~0.7 MB)
+FOTO_MAX_N = 3                 # máximo de fotos por centro de acopio
 FOTO_MIMES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 TOKEN_TTL = int(os.environ.get("TOKEN_TTL_DAYS", "30")) * 86400
 ADMIN_PASSWORD_ENV = os.environ.get("ADMIN_PASSWORD")  # puede ser None
@@ -115,12 +116,17 @@ def init_db():
         value TEXT
     );
     """)
-    # Migración: añadir columna 'disponibilidad' si la base es de una versión anterior
+    # Migración: añadir columnas nuevas si la base es de una versión anterior
     cols = [r[1] for r in db.execute("PRAGMA table_info(centros)").fetchall()]
     if "disponibilidad" not in cols:
         db.execute("ALTER TABLE centros ADD COLUMN disponibilidad TEXT NOT NULL DEFAULT '{}'")
     if "foto" not in cols:
         db.execute("ALTER TABLE centros ADD COLUMN foto TEXT")
+    if "fotos" not in cols:
+        db.execute("ALTER TABLE centros ADD COLUMN fotos TEXT NOT NULL DEFAULT '[]'")
+        # Pasar la foto única anterior (si existía) a la nueva lista
+        for r in db.execute("SELECT id, foto FROM centros WHERE foto IS NOT NULL AND foto<>''").fetchall():
+            db.execute("UPDATE centros SET fotos=? WHERE id=?", (json.dumps([r[1]]), r[0]))
     db.commit()
     db.close()
 
@@ -245,10 +251,12 @@ def centro_public(row, with_verif=True):
         "nota": row["nota"] or "", "actualizado": row["actualizado"],
         "protegido": bool(row["pw_hash"]),
     }
-    foto = row["foto"] if "foto" in row.keys() else None
-    if foto:
-        # cache-bust con la marca de actualización para que la nueva foto se vea al instante
-        d["foto"] = "/api/fotos/" + foto + "?v=" + str(row["actualizado"])
+    try:
+        flist = json.loads((row["fotos"] if "fotos" in row.keys() else "[]") or "[]")
+    except Exception:
+        flist = []
+    v = str(row["actualizado"])
+    d["fotos"] = ["/api/fotos/" + f + "?v=" + v for f in flist if f]
     if row["lat"] is not None and row["lng"] is not None:
         d["lat"] = row["lat"]; d["lng"] = row["lng"]
     if with_verif:
@@ -449,9 +457,15 @@ def upload_foto(cid):
     if not auth_centro(cid):
         return jsonify(error="no_autorizado"), 401
 
+    try:
+        fotos = json.loads((row["fotos"] if "fotos" in row.keys() else "[]") or "[]")
+    except Exception:
+        fotos = []
+    if len(fotos) >= FOTO_MAX_N:
+        return jsonify(error="limite", max=FOTO_MAX_N), 409
+
     data = request.get_json(silent=True) or {}
     raw = data.get("imagen") or ""
-    # Acepta data URL ("data:image/jpeg;base64,...") o base64 + mime aparte
     mime = data.get("mime")
     if isinstance(raw, str) and raw.startswith("data:"):
         try:
@@ -469,39 +483,42 @@ def upload_foto(cid):
         return jsonify(error="tamano"), 413
 
     os.makedirs(FOTOS_DIR, exist_ok=True)
-    # Borra cualquier foto anterior de este centro (distinta extensión)
-    for ext in FOTO_MIMES.values():
-        viejo = os.path.join(FOTOS_DIR, cid + ext)
-        if os.path.exists(viejo):
-            try: os.remove(viejo)
-            except OSError: pass
-    fname = cid + FOTO_MIMES[mime]
+    fname = cid + "-" + secrets.token_hex(4) + FOTO_MIMES[mime]
     with open(os.path.join(FOTOS_DIR, fname), "wb") as f:
         f.write(blob)
+    fotos.append(fname)
     now = int(time.time() * 1000)
-    db.execute("UPDATE centros SET foto=?, actualizado=? WHERE id=?", (fname, now, cid))
+    db.execute("UPDATE centros SET fotos=?, actualizado=? WHERE id=?", (json.dumps(fotos), now, cid))
     db.commit()
     row = db.execute("SELECT * FROM centros WHERE id=?", (cid,)).fetchone()
     return jsonify(centro=centro_public(row))
 
 
-@app.delete("/api/centros/<cid>/foto")
-def delete_foto(cid):
+@app.delete("/api/centros/<cid>/foto/<fname>")
+def delete_foto(cid, fname):
     db = get_db()
     row = db.execute("SELECT * FROM centros WHERE id=?", (cid,)).fetchone()
     if not row:
         return jsonify(error="no_existe"), 404
     if not auth_centro(cid):
         return jsonify(error="no_autorizado"), 401
-    fname = row["foto"] if "foto" in row.keys() else None
-    if fname:
-        p = os.path.join(FOTOS_DIR, fname)
-        if os.path.exists(p):
-            try: os.remove(p)
-            except OSError: pass
-    db.execute("UPDATE centros SET foto=NULL WHERE id=?", (cid,))
+    try:
+        fotos = json.loads((row["fotos"] if "fotos" in row.keys() else "[]") or "[]")
+    except Exception:
+        fotos = []
+    # Solo se puede borrar una foto que de verdad pertenece a este centro
+    if fname not in fotos:
+        return jsonify(error="no_existe"), 404
+    fotos = [f for f in fotos if f != fname]
+    p = os.path.join(FOTOS_DIR, fname)
+    if os.path.exists(p):
+        try: os.remove(p)
+        except OSError: pass
+    now = int(time.time() * 1000)
+    db.execute("UPDATE centros SET fotos=?, actualizado=? WHERE id=?", (json.dumps(fotos), now, cid))
     db.commit()
-    return jsonify(ok=True)
+    row = db.execute("SELECT * FROM centros WHERE id=?", (cid,)).fetchone()
+    return jsonify(centro=centro_public(row))
 
 
 @app.get("/api/fotos/<fname>")
@@ -693,12 +710,16 @@ def admin_set_password(cid):
 @require_admin
 def admin_delete(cid):
     db = get_db()
-    fr = db.execute("SELECT foto FROM centros WHERE id=?", (cid,)).fetchone()
-    if fr and ("foto" in fr.keys()) and fr["foto"]:
-        p = os.path.join(FOTOS_DIR, fr["foto"])
-        if os.path.exists(p):
-            try: os.remove(p)
-            except OSError: pass
+    fr = db.execute("SELECT fotos FROM centros WHERE id=?", (cid,)).fetchone()
+    if fr and ("fotos" in fr.keys()) and fr["fotos"]:
+        try:
+            for f in json.loads(fr["fotos"] or "[]"):
+                p = os.path.join(FOTOS_DIR, f)
+                if os.path.exists(p):
+                    try: os.remove(p)
+                    except OSError: pass
+        except Exception:
+            pass
     db.execute("DELETE FROM verif WHERE centro_id=?", (cid,))
     db.execute("DELETE FROM centros WHERE id=?", (cid,))
     db.commit()
