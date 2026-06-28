@@ -1273,7 +1273,7 @@ function adminScreen(){
       }
     }}, first ? "Crear y entrar" : "Entrar"));
     if(cfg.envManaged) main.appendChild(el("div",{class:"gatenote", style:"margin-top:14px"},
-      "La contraseña de administrador está fijada por el servidor (variable ADMIN_PASSWORD)."));
+      "La contraseña de administrador está fijada por el servidor."));
     return el("div",{class:"wrap"}, topbar("Administración", null, ()=>{state.screen="landing"; render();}), main);
   }
 
