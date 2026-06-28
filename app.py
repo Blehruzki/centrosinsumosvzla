@@ -548,6 +548,26 @@ def admin_regen_code(cid):
     return jsonify(codigo=nuevo)
 
 
+@app.post("/api/admin/centros/<cid>/password")
+@require_admin
+def admin_set_password(cid):
+    db = get_db()
+    row = db.execute("SELECT 1 FROM centros WHERE id=?", (cid,)).fetchone()
+    if not row:
+        return jsonify(error="no_existe"), 404
+    data = request.get_json(silent=True) or {}
+    pw = data.get("password")
+    # password vacío o nulo => quitar la contraseña; si trae texto => fijar nueva
+    if pw is None or str(pw) == "":
+        db.execute("UPDATE centros SET pw_hash=NULL WHERE id=?", (cid,))
+        protegido = False
+    else:
+        db.execute("UPDATE centros SET pw_hash=? WHERE id=?", (generate_password_hash(str(pw)), cid))
+        protegido = True
+    db.commit()
+    return jsonify(protegido=protegido)
+
+
 @app.delete("/api/admin/centros/<cid>")
 @require_admin
 def admin_delete(cid):

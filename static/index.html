@@ -307,6 +307,7 @@ const store = {
   async adminClearReports(token, id){ return await api("/admin/centros/"+id+"/reportes",{method:"DELETE", headers:{Authorization:"Bearer "+token}}); },
   async adminGetCode(token, id){ return (await api("/admin/centros/"+id+"/codigo",{headers:{Authorization:"Bearer "+token}})).codigo; },
   async adminRegenCode(token, id){ return (await api("/admin/centros/"+id+"/codigo",{method:"POST", headers:{Authorization:"Bearer "+token}})).codigo; },
+  async adminSetPassword(token, id, password){ return await api("/admin/centros/"+id+"/password",{method:"POST", headers:{Authorization:"Bearer "+token}, body:JSON.stringify({password})}); },
 };
 
 /* ---------- Estado de la app ---------- */
@@ -339,6 +340,7 @@ let state = {
   adminError: "",
   adminDelId: null,      // centro pendiente de confirmar borrado
   adminCodes: {},        // id de centro -> código revelado en el panel
+  adminPwFor: null,      // centro con el panel de restablecer contraseña abierto
   reportFor: null,       // centro con el panel de reporte abierto
   demo: false,
 };
@@ -761,6 +763,37 @@ function facilityCard(c){
 
 // Panel para reportar un centro (motivo + texto opcional). Usa variables locales
 // para no redibujar mientras el voluntario escribe (no pierde el foco del texto).
+// Panel del admin para restablecer o quitar la contraseña de un centro
+function pwResetPanel(c){
+  let pw = "";
+  async function aplicar(nueva, msg){
+    try{
+      const r = await store.adminSetPassword(state.adminToken, c.id, nueva);
+      const item = state.adminList.find(x=>x.id===c.id);
+      if(item) item.protegido = r.protegido;
+      state.adminPwFor = null; render(); toast(msg);
+    }catch(err){ toast(err.status===401?"Sesión de admin expirada":"No se pudo aplicar"); }
+  }
+  const box = el("div",{class:"reportbox"});
+  box.appendChild(el("div",{class:"rt"}, "Restablecer contraseña de «"+c.nombre+"»"));
+  const inp = el("input",{type:"text", placeholder:"Nueva contraseña", maxlength:"60",
+    oninput:e=>{ pw=e.target.value; }});
+  box.appendChild(inp);
+  box.appendChild(el("div",{class:"ractions"},
+    el("button",{class:"btn", style:"flex:1", onclick:()=>{
+      if(!pw){ toast("Escribe una contraseña o usa «Quitar»"); return; }
+      aplicar(pw, "Contraseña actualizada");
+    }}, "Guardar nueva"),
+    el("button",{class:"danger", onclick:()=>{
+      if(confirm("El centro quedará sin contraseña (solo con su código). ¿Continuar?")) aplicar("", "Contraseña quitada");
+    }}, "Quitar contraseña"),
+    el("button",{class:"smallbtn", style:"margin-left:0", onclick:()=>{ state.adminPwFor=null; render(); }}, "Cancelar")
+  ));
+  box.appendChild(el("div",{class:"gatenote", style:"margin:8px 2px 0"},
+    "Avísale al centro la nueva contraseña. Si la quitas, podrá editar solo con su código."));
+  return box;
+}
+
 function reportPanel(c){
   let chosen = null;
   let txt = "";
@@ -1137,6 +1170,10 @@ function adminScreen(){
         catch(err){ toast(err.status===401?"Sesión de admin expirada":"No se pudo regenerar"); }
       }}, "Regenerar código"));
     }
+    // Restablecer contraseña (solo si el centro tiene una)
+    if(c.protegido && state.adminDelId!==c.id){
+      acts.appendChild(el("button",{class:"smallbtn", onclick:()=>{ state.adminPwFor = (state.adminPwFor===c.id?null:c.id); render(); }}, "Restablecer contraseña"));
+    }
     if(nrep>0){
       acts.appendChild(el("button",{class:"smallbtn", onclick:async()=>{
         try{ await store.adminClearReports(state.adminToken, c.id);
@@ -1176,6 +1213,10 @@ function adminScreen(){
       ));
     }
     row.appendChild(acts);
+    // Panel para restablecer/quitar contraseña
+    if(state.adminPwFor===c.id){
+      row.appendChild(pwResetPanel(c));
+    }
     main.appendChild(row);
   });
   main.appendChild(el("div",{style:"margin-top:16px"},
