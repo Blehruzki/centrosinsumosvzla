@@ -158,6 +158,10 @@ def init_db():
         key TEXT PRIMARY KEY,
         value TEXT
     );
+    CREATE TABLE IF NOT EXISTS presencia (
+        uid TEXT PRIMARY KEY,
+        visto INTEGER NOT NULL
+    );
     """)
     # Migración: añadir columnas nuevas si la base es de una versión anterior
     cols = [r[1] for r in db.execute("PRAGMA table_info(centros)").fetchall()]
@@ -327,12 +331,31 @@ def rate_limit(bucket, limit, window):
 # --------------------------------------------------------------------------- #
 # Cabeceras de seguridad / CORS
 # --------------------------------------------------------------------------- #
+# Rutas públicas que cualquier app puede consumir desde cualquier origen (solo lectura).
+PUBLIC_CORS_PATHS = {"/api/health", "/api/centros", "/api/ayuda", "/api/banner", "/api/active"}
+
+def _es_cors_publico(path, method):
+    if path.startswith("/api/fotos/"):
+        return True
+    if path in PUBLIC_CORS_PATHS:
+        return True
+    if path == "/api/ping":   # latido del contador de visitas
+        return True
+    return False
+
+
 @app.after_request
 def headers(resp):
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
     resp.headers.setdefault("X-Frame-Options", "DENY")
     resp.headers.setdefault("Referrer-Policy", "no-referrer")
-    if ALLOW_ORIGIN:
+    if _es_cors_publico(request.path, request.method):
+        # Lectura abierta: cualquier app/origen puede consumir estos datos.
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Max-Age"] = "86400"
+    elif ALLOW_ORIGIN:
         resp.headers["Access-Control-Allow-Origin"] = ALLOW_ORIGIN
         resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
@@ -350,6 +373,38 @@ def cors_preflight(_p):
 @app.get("/api/health")
 def health():
     return jsonify(ok=True)
+
+
+# Contador de personas viendo la página ahora mismo.
+PRESENCIA_VENTANA_MS = 45 * 1000   # se considera "activo" si dio señal en los últimos 45 s
+
+def contar_activos(db):
+    corte = int(time.time() * 1000) - PRESENCIA_VENTANA_MS
+    row = db.execute("SELECT COUNT(*) n FROM presencia WHERE visto > ?", (corte,)).fetchone()
+    return row["n"] if row else 0
+
+
+@app.post("/api/ping")
+def ping():
+    if not rate_limit("ping", 120, 600):
+        return jsonify(error="rate"), 429
+    data = request.get_json(silent=True) or {}
+    uid = clean_str(data.get("uid"), 40)
+    db = get_db()
+    now = int(time.time() * 1000)
+    if uid:
+        db.execute("INSERT INTO presencia(uid, visto) VALUES(?,?) "
+                   "ON CONFLICT(uid) DO UPDATE SET visto=excluded.visto", (uid, now))
+        # Limpieza ocasional de registros viejos para que la tabla no crezca
+        if now % 17 == 0:
+            db.execute("DELETE FROM presencia WHERE visto < ?", (now - 10 * 60 * 1000,))
+        db.commit()
+    return jsonify(activos=contar_activos(db))
+
+
+@app.get("/api/active")
+def active():
+    return jsonify(activos=contar_activos(get_db()))
 
 
 def get_ayuda():

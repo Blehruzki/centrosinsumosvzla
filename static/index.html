@@ -162,6 +162,10 @@
   .footlink{appearance:none; border:0; background:none; cursor:pointer; padding:0; font:inherit;
     font-size:12.5px; font-weight:700; color:var(--brand-ink); text-decoration:underline;}
   .footsep{color:var(--muted);}
+  .liverow{display:flex; align-items:center; gap:6px; margin-top:8px; font-size:12px; color:var(--muted); min-height:14px;}
+  .liverow .livedot{width:7px; height:7px; border-radius:50%; background:var(--suf); flex:0 0 auto;
+    box-shadow:0 0 0 0 rgba(27,138,90,.5); animation:livepulse 2s infinite;}
+  @keyframes livepulse{0%{box-shadow:0 0 0 0 rgba(27,138,90,.45)} 70%{box-shadow:0 0 0 6px rgba(27,138,90,0)} 100%{box-shadow:0 0 0 0 rgba(27,138,90,0)}}
   /* ayuda */
   .helpsec{margin:18px 0; padding:16px; background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow);}
   .helpsec h3{font-size:16px; margin:0 0 12px;}
@@ -446,6 +450,7 @@ const store = {
   async adminSaveAyuda(token, ayuda){ const d=await api("/admin/ayuda",{method:"PUT", headers:{Authorization:"Bearer "+token}, body:JSON.stringify({ayuda})}); return d.ayuda; },
   async adminResetAyuda(token){ const d=await api("/admin/ayuda",{method:"DELETE", headers:{Authorization:"Bearer "+token}}); return d.ayuda; },
   async getBanner(){ const d=await api("/banner"); return d.banner; },
+  async ping(uid){ const d=await api("/ping",{method:"POST", body:JSON.stringify({uid})}); return d.activos; },
   async adminSaveBanner(token, banner){ const d=await api("/admin/banner",{method:"PUT", headers:{Authorization:"Bearer "+token}, body:JSON.stringify({banner})}); return d.banner; },
 };
 
@@ -472,6 +477,7 @@ let state = {
   ayuda: null,           // contenido editable de la sección de ayuda (se carga del servidor)
   ayudaEdit: null,       // copia de trabajo mientras el admin edita la ayuda
   banner: null,          // banner informativo (se carga del servidor)
+  activos: null,         // personas viendo la página ahora mismo
   bannerEdit: null,      // copia de trabajo mientras el admin edita el banner
   myLoc: null,           // ubicación del voluntario (en memoria)
   sortBy: "urgencia",    // "urgencia" | "cercania"
@@ -749,6 +755,28 @@ async function boot(){
   await refresh();
   render();
   setInterval(()=>{ if(document.visibilityState==="visible" && state.screen==="voluntario" && !state.reportFor && !state.coordFor && !state.searchText) refresh(); }, 8000);
+  // Latido del contador de visitas (no redibuja toda la pantalla: actualiza solo el indicador)
+  latir();
+  setInterval(()=>{ if(document.visibilityState==="visible") latir(); }, 20000);
+}
+
+async function latir(){
+  try{
+    state.activos = await store.ping(state.uid);
+    actualizarLive();
+  }catch(_){}
+}
+function actualizarLive(){
+  const txt = textoActivos(state.activos);
+  document.querySelectorAll(".liverow").forEach(row=>{
+    const span = row.querySelector(".liveviewers");
+    if(span) span.textContent = txt;
+    row.style.display = txt ? "flex" : "none";
+  });
+}
+function textoActivos(n){
+  if(!n || n<1) return "";
+  return n===1 ? "1 viendo ahora" : (n+" viendo ahora");
 }
 
 /* ============================================================
@@ -804,6 +832,10 @@ function footnote(){
       el("button",{class:"footlink", onclick:()=>{ state.screen="ayuda"; render(); }}, "¿Cómo funciona? · Ayuda"),
       el("span",{class:"footsep"}, "·"),
       el("a",{class:"footlink", href:"mailto:danielquintanasanz@gmail.com?subject=Centros%20de%20Insumos%20VZla"}, "Contacto")
+    ),
+    el("div",{class:"liverow", style: textoActivos(state.activos) ? "" : "display:none"},
+      el("span",{class:"livedot"}),
+      el("span",{class:"liveviewers"}, textoActivos(state.activos))
     )
   );
 }
