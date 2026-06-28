@@ -131,6 +131,8 @@ def init_db():
         contacto TEXT,
         estado TEXT NOT NULL,
         necesidades TEXT NOT NULL DEFAULT '[]',
+        necesita INTEGER NOT NULL DEFAULT 0,
+        ofrece INTEGER NOT NULL DEFAULT 0,
         nota TEXT,
         lat REAL,
         lng REAL,
@@ -174,6 +176,12 @@ def init_db():
         # Pasar la foto única anterior (si existía) a la nueva lista
         for r in db.execute("SELECT id, foto FROM centros WHERE foto IS NOT NULL AND foto<>''").fetchall():
             db.execute("UPDATE centros SET fotos=? WHERE id=?", (json.dumps([r[1]]), r[0]))
+    if "necesita" not in cols:
+        db.execute("ALTER TABLE centros ADD COLUMN necesita INTEGER NOT NULL DEFAULT 0")
+        db.execute("ALTER TABLE centros ADD COLUMN ofrece INTEGER NOT NULL DEFAULT 0")
+        # Rol según el tipo previo: hospitales/refugios necesitaban; acopios/particulares ofrecían
+        db.execute("UPDATE centros SET necesita=1 WHERE tipo IN ('hospital','refugio')")
+        db.execute("UPDATE centros SET ofrece=1 WHERE tipo IN ('acopio','particular')")
     db.commit()
     db.close()
 
@@ -295,6 +303,8 @@ def centro_public(row, with_verif=True):
         "zona": row["zona"] or "", "contacto": row["contacto"] or "",
         "estado": row["estado"], "necesidades": json.loads(row["necesidades"] or "[]"),
         "disponibilidad": json.loads((row["disponibilidad"] if "disponibilidad" in row.keys() else "{}") or "{}"),
+        "necesita": bool(row["necesita"]) if "necesita" in row.keys() else (row["tipo"] in ("hospital", "refugio")),
+        "ofrece": bool(row["ofrece"]) if "ofrece" in row.keys() else (row["tipo"] in ("acopio", "particular")),
         "nota": row["nota"] or "", "actualizado": row["actualizado"],
         "protegido": bool(row["pw_hash"]),
     }
@@ -503,13 +513,20 @@ def register_centro():
     data = request.get_json(silent=True) or {}
     nombre = clean_str(data.get("nombre"), 80)
     tipo = data.get("tipo") if data.get("tipo") in TIPOS else "hospital"
-    es_acopio = tipo in ("acopio", "particular")   # tipos con inventario (disponibilidad)
-    if es_acopio:
-        estado = "suficiente"   # los acopios no usan el semáforo; valor de relleno
-    else:
-        estado = data.get("estado") if data.get("estado") in ESTADOS else None
-    if not nombre or not estado:
+    # Roles independientes del tipo: un centro puede necesitar, ofrecer, o ambos.
+    necesita = bool(data.get("necesita"))
+    ofrece = bool(data.get("ofrece"))
+    if not nombre:
         return jsonify(error="datos"), 400
+    if not (necesita or ofrece):
+        return jsonify(error="rol"), 400   # al menos uno de los dos roles
+
+    if necesita:
+        estado = data.get("estado") if data.get("estado") in ESTADOS else None
+        if not estado:
+            return jsonify(error="datos"), 400
+    else:
+        estado = "suficiente"   # relleno; no se usa si no necesita
 
     db = get_db()
     if not data.get("permitirDuplicado"):
@@ -522,8 +539,8 @@ def register_centro():
 
     cid = "c" + secrets.token_hex(8)
     codigo = unique_code(db)
-    nec = [] if es_acopio else (parse_necesidades(data.get("necesidades")) if estado != "suficiente" else [])
-    disp = parse_disponibilidad(data.get("disponibilidad")) if es_acopio else {}
+    nec = (parse_necesidades(data.get("necesidades")) if (necesita and estado != "suficiente") else []) if necesita else []
+    disp = parse_disponibilidad(data.get("disponibilidad")) if ofrece else {}
     lat = parse_coord(data.get("lat"), -90, 90)
     lng = parse_coord(data.get("lng"), -180, 180)
     pw = data.get("password") or ""
@@ -531,11 +548,11 @@ def register_centro():
     now = int(time.time() * 1000)
 
     db.execute("""INSERT INTO centros
-        (id,nombre,tipo,zona,contacto,estado,necesidades,disponibilidad,nota,lat,lng,codigo,pw_hash,actualizado,creado)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (id,nombre,tipo,zona,contacto,estado,necesidades,disponibilidad,necesita,ofrece,nota,lat,lng,codigo,pw_hash,actualizado,creado)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (cid, nombre, tipo, clean_str(data.get("zona"), 60), clean_str(data.get("contacto"), 40),
-         estado, json.dumps(nec), json.dumps(disp), clean_str(data.get("nota"), 240),
-         lat, lng, codigo, pw_hash, now, now))
+         estado, json.dumps(nec), json.dumps(disp), 1 if necesita else 0, 1 if ofrece else 0,
+         clean_str(data.get("nota"), 240), lat, lng, codigo, pw_hash, now, now))
     db.commit()
 
     row = db.execute("SELECT * FROM centros WHERE id=?", (cid,)).fetchone()
@@ -583,21 +600,31 @@ def update_centro(cid):
     data = request.get_json(silent=True) or {}
     nombre = clean_str(data.get("nombre", row["nombre"]), 80) or row["nombre"]
     tipo = data.get("tipo") if data.get("tipo") in TIPOS else row["tipo"]
-    es_acopio = tipo in ("acopio", "particular")   # tipos con inventario (disponibilidad)
-    if es_acopio:
-        estado = "suficiente"
+    # Roles: si vienen en la petición se usan; si no, se conservan los actuales
+    row_nec = bool(row["necesita"]) if "necesita" in row.keys() else (row["tipo"] in ("hospital", "refugio"))
+    row_ofr = bool(row["ofrece"]) if "ofrece" in row.keys() else (row["tipo"] in ("acopio", "particular"))
+    necesita = bool(data.get("necesita")) if "necesita" in data else row_nec
+    ofrece = bool(data.get("ofrece")) if "ofrece" in data else row_ofr
+    if not (necesita or ofrece):
+        return jsonify(error="rol"), 400
+
+    if necesita:
+        estado = data.get("estado") if data.get("estado") in ESTADOS else (row["estado"] if row["estado"] in ESTADOS else None)
+        if not estado:
+            return jsonify(error="datos"), 400
     else:
-        estado = data.get("estado") if data.get("estado") in ESTADOS else row["estado"]
-    nec = [] if es_acopio else (parse_necesidades(data.get("necesidades")) if estado != "suficiente" else [])
+        estado = "suficiente"
+    nec = (parse_necesidades(data.get("necesidades")) if "necesidades" in data else json.loads(row["necesidades"] or "[]")) if (necesita and estado != "suficiente") else []
+
     # disponibilidad: si viene en la petición se reemplaza; si no, se conserva la actual
     if "disponibilidad" in data:
-        disp = parse_disponibilidad(data.get("disponibilidad")) if es_acopio else {}
+        disp = parse_disponibilidad(data.get("disponibilidad")) if ofrece else {}
     else:
         try:
             disp = json.loads((row["disponibilidad"] if "disponibilidad" in row.keys() else "{}") or "{}")
         except Exception:
             disp = {}
-        if not es_acopio:
+        if not ofrece:
             disp = {}
     zona = clean_str(data.get("zona", row["zona"]), 60)
     contacto = clean_str(data.get("contacto", row["contacto"]), 40)
@@ -617,8 +644,9 @@ def update_centro(cid):
 
     now = int(time.time() * 1000)
     db.execute("""UPDATE centros SET nombre=?,tipo=?,zona=?,contacto=?,estado=?,
-        necesidades=?,disponibilidad=?,nota=?,lat=?,lng=?,pw_hash=?,actualizado=? WHERE id=?""",
-        (nombre, tipo, zona, contacto, estado, json.dumps(nec), json.dumps(disp), nota, lat, lng, pw_hash, now, cid))
+        necesidades=?,disponibilidad=?,necesita=?,ofrece=?,nota=?,lat=?,lng=?,pw_hash=?,actualizado=? WHERE id=?""",
+        (nombre, tipo, zona, contacto, estado, json.dumps(nec), json.dumps(disp),
+         1 if necesita else 0, 1 if ofrece else 0, nota, lat, lng, pw_hash, now, cid))
     db.commit()
     row = db.execute("SELECT * FROM centros WHERE id=?", (cid,)).fetchone()
     return jsonify(centro=centro_public(row))
