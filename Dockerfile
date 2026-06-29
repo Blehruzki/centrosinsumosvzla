@@ -31,8 +31,11 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=4s --start-period=10s --retries=3 \
     CMD python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=3).status==200 else 1)"
 
-# 2 procesos x 4 hilos: suficiente para tráfico moderado.
-# SQLite en WAL tolera esta concurrencia; para mucha carga, migrar a Postgres.
+# 1 proceso x 8 hilos: misma capacidad concurrente que antes, pero con el estado
+# en memoria (bloqueo del login admin y límite de tasa) consistente. Un solo worker
+# evita que esos contadores se dividan entre procesos. La app es I/O-bound (SQLite),
+# así que los hilos bastan; para mucha carga real, migrar a Postgres + estado compartido.
+# SQLite en WAL tolera esta concurrencia.
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", \
-     "--workers", "2", "--threads", "4", "--worker-class", "gthread", \
+     "--workers", "1", "--threads", "8", "--worker-class", "gthread", \
      "--timeout", "60", "--access-logfile", "-", "app:app"]

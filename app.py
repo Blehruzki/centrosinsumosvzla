@@ -168,6 +168,11 @@ def init_db():
         uid TEXT PRIMARY KEY,
         visto INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS admin_fails (
+        ip TEXT NOT NULL,
+        ts INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_fails_ip ON admin_fails(ip);
     """)
     # Migración: añadir columnas nuevas si la base es de una versión anterior
     cols = [r[1] for r in db.execute("PRAGMA table_info(centros)").fetchall()]
@@ -378,34 +383,44 @@ def rate_limit(bucket, limit, window):
 
 
 # --------------------------------------------------------------------------- #
-# Bloqueo del login de administrador: tras varios fallos, la IP queda
-# bloqueada un rato aunque acierte. Es por IP (no global), así que una IP
-# atacante bloqueada nunca deja fuera al admin desde otra IP.
+# Bloqueo del login de administrador. Persistido en la base de datos, de modo
+# que sobrevive a reinicios y funciona con cualquier número de workers. Es por
+# IP (no global): una IP atacante bloqueada nunca deja fuera al admin desde
+# otra IP. El admin suele tener buena conexión, así que robustecer aquí no
+# afecta la ligereza del acceso público.
 # --------------------------------------------------------------------------- #
 ADMIN_FAIL_LIMIT = 5         # fallos permitidos...
 ADMIN_FAIL_WINDOW = 900      # ...dentro de esta ventana (segundos) = 15 min
-_admin_fails = {}
 
 def admin_lock_remaining(ip):
     """Segundos que faltan para desbloquear esa IP, o 0 si no está bloqueada."""
-    now = time.time()
-    arr = [t for t in _admin_fails.get(ip, []) if now - t < ADMIN_FAIL_WINDOW]
-    _admin_fails[ip] = arr
-    if len(arr) >= ADMIN_FAIL_LIMIT:
-        return int(ADMIN_FAIL_WINDOW - (now - arr[0])) + 1
+    db = get_db()
+    now = int(time.time() * 1000)
+    cutoff = now - ADMIN_FAIL_WINDOW * 1000
+    row = db.execute("SELECT COUNT(*) n, MIN(ts) m FROM admin_fails WHERE ip=? AND ts>?",
+                     (ip, cutoff)).fetchone()
+    if row and row["n"] >= ADMIN_FAIL_LIMIT and row["m"] is not None:
+        return int((row["m"] + ADMIN_FAIL_WINDOW * 1000 - now) / 1000) + 1
     return 0
 
 def admin_fail_record(ip):
-    now = time.time()
-    arr = [t for t in _admin_fails.get(ip, []) if now - t < ADMIN_FAIL_WINDOW]
-    arr.append(now)
-    _admin_fails[ip] = arr
-    if len(_admin_fails) > 512:
-        for k in [k for k, v in _admin_fails.items() if not v or now - v[-1] > ADMIN_FAIL_WINDOW]:
-            _admin_fails.pop(k, None)
+    """Registra un fallo y devuelve cuántos lleva esa IP dentro de la ventana."""
+    db = get_db()
+    now = int(time.time() * 1000)
+    db.execute("INSERT INTO admin_fails(ip, ts) VALUES(?,?)", (ip, now))
+    # Limpieza de intentos vencidos (de cualquier IP) para que la tabla no crezca.
+    db.execute("DELETE FROM admin_fails WHERE ts < ?", (now - ADMIN_FAIL_WINDOW * 1000,))
+    db.commit()
+    cutoff = now - ADMIN_FAIL_WINDOW * 1000
+    row = db.execute("SELECT COUNT(*) n FROM admin_fails WHERE ip=? AND ts>?",
+                     (ip, cutoff)).fetchone()
+    return row["n"] if row else 0
 
 def admin_fail_clear(ip):
-    _admin_fails.pop(ip, None)
+    """Borra los fallos de esa IP (al entrar bien)."""
+    db = get_db()
+    db.execute("DELETE FROM admin_fails WHERE ip=?", (ip,))
+    db.commit()
 
 
 # --------------------------------------------------------------------------- #
@@ -935,8 +950,8 @@ def admin_login():
         return jsonify(error="setup_required"), 409
     data = request.get_json(silent=True) or {}
     if not check_admin_password(data.get("password") or ""):
-        admin_fail_record(ip)
-        restantes = max(0, ADMIN_FAIL_LIMIT - len(_admin_fails.get(ip, [])))
+        n = admin_fail_record(ip)
+        restantes = max(0, ADMIN_FAIL_LIMIT - n)
         app.logger.warning("admin login fallido: ip=%s intentos_restantes=%s", ip, restantes)
         return jsonify(error="password", intentosRestantes=restantes), 401
     admin_fail_clear(ip)
