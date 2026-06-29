@@ -38,12 +38,18 @@ Respuesta:
       "zona": "Centro",
       "contacto": "0414-1234567",
       "estado": "urgente",
+      "necesita": true,
+      "ofrece": true,
       "necesidades": ["agua", "medicamentos"],
-      "disponibilidad": {},
+      "disponibilidad": { "abrigo": "mucho" },
+      "notaNecesita": "Prioridad analgésicos",
+      "notaOfrece": "Tenemos mantas de sobra",
+      "fotosNecesita": [],
+      "fotosOfrece": ["/api/fotos/c1a2b3c4d5e6f7a8-3cc34b04.jpg"],
       "nota": "Prioridad analgésicos",
+      "fotos": ["/api/fotos/c1a2b3c4d5e6f7a8-3cc34b04.jpg"],
       "actualizado": 1782600000000,
       "protegido": true,
-      "fotos": [],
       "lat": 10.6545,
       "lng": -71.6125,
       "verif": 3
@@ -52,22 +58,38 @@ Respuesta:
 }
 ```
 
+#### El modelo de roles
+
+El `tipo` (`hospital`, `refugio`, `acopio`, `particular`) es **solo descriptivo**. Lo que
+determina qué publica un centro son dos booleanos independientes: un mismo centro puede
+**necesitar** insumos (`necesita: true`), **ofrecerlos** (`ofrece: true`), o ambas cosas a la
+vez. Siempre tiene al menos uno de los dos en `true`.
+
+- Si `necesita` es `true`: mira `estado`, `necesidades`, `notaNecesita` y `fotosNecesita`.
+- Si `ofrece` es `true`: mira `disponibilidad`, `notaOfrece` y `fotosOfrece`.
+
 #### Campos de un centro
 
 | Campo            | Tipo            | Descripción |
 |------------------|-----------------|-------------|
 | `id`             | string          | Identificador único del centro. |
 | `nombre`         | string          | Nombre del centro. |
-| `tipo`           | string          | Uno de: `hospital`, `refugio`, `acopio`. |
+| `tipo`           | string          | Descriptivo. Uno de: `hospital`, `refugio`, `acopio`, `particular`. No determina el rol. |
 | `zona`           | string          | Zona o sector (puede venir vacío). |
 | `contacto`       | string          | Teléfono u otro contacto (puede venir vacío). |
-| `estado`         | string          | Para `hospital`/`refugio`: `suficiente`, `bajo` o `urgente`. En `acopio` no es significativo. |
-| `necesidades`    | string[]        | Insumos que el centro **necesita** (solo `hospital`/`refugio`). Ver catálogo de insumos. |
-| `disponibilidad` | objeto          | Solo en `acopio`: insumo → nivel. Ver más abajo. |
-| `nota`           | string          | Nota libre (puede venir vacía). |
+| `necesita`       | booleano        | `true` si el centro necesita insumos. |
+| `ofrece`         | booleano        | `true` si el centro ofrece insumos. |
+| `estado`         | string          | Relevante si `necesita`: `suficiente`, `bajo` o `urgente`. |
+| `necesidades`    | string[]        | Insumos que el centro **necesita** (vacío si está `suficiente` o si no necesita). Ver catálogo. |
+| `disponibilidad` | objeto          | Insumos que el centro **ofrece**: insumo → nivel (vacío si no ofrece). Ver más abajo. |
+| `notaNecesita`   | string          | Nota libre del lado que necesita (puede venir vacía). |
+| `notaOfrece`     | string          | Nota libre del lado que ofrece (puede venir vacía). |
+| `fotosNecesita`  | string[]        | Rutas de fotos del lado que necesita. Antepón la Base URL para obtener la imagen. |
+| `fotosOfrece`    | string[]        | Rutas de fotos del lado que ofrece. Antepón la Base URL para obtener la imagen. |
+| `nota`           | string          | **Compatibilidad.** Nota combinada (necesita u ofrece). Prefiere los campos por rol. |
+| `fotos`          | string[]        | **Compatibilidad.** Todas las fotos combinadas. Prefiere los campos por rol. |
 | `actualizado`    | número          | Marca de tiempo de la última actualización, en **milisegundos desde época Unix (UTC)**. |
 | `protegido`      | booleano        | `true` si el centro tiene contraseña (no afecta la lectura). |
-| `fotos`          | string[]        | Rutas relativas a las fotos del centro (solo `acopio`). Antepón la Base URL para obtener la imagen. |
 | `lat`            | número          | Latitud. **Solo está presente si el centro tiene ubicación.** |
 | `lng`            | número          | Longitud. **Solo está presente si el centro tiene ubicación.** |
 | `verif`          | número          | Cantidad de voluntarios que verificaron que el centro es real. |
@@ -86,6 +108,7 @@ Las claves usadas en `necesidades` y `disponibilidad` son:
 | `higiene`      | Higiene                |
 | `energia`      | Energía / baterías     |
 | `combustible`  | Combustible            |
+| `materiales`   | Materiales de construcción |
 
 #### Niveles de `disponibilidad` (centros de acopio)
 
@@ -102,7 +125,10 @@ Las claves usadas en `necesidades` y `disponibilidad` son:
 | `poco`    | Queda poco. |
 | `agotado` | Sin existencias por ahora (no cuenta como disponible). |
 
-Para "quién tiene un insumo X disponible", filtra los `acopio` cuyo `disponibilidad[X]` exista y sea distinto de `agotado`.
+Para "quién **ofrece** un insumo X disponible", filtra los centros con `ofrece: true` cuyo
+`disponibilidad[X]` exista y sea distinto de `agotado`. Para "quién **necesita** un insumo X",
+filtra los centros con `necesita: true` y `estado` distinto de `suficiente` cuyo arreglo
+`necesidades` incluya X.
 
 ---
 
