@@ -317,7 +317,7 @@ def _rowget(row, key, default=None):
     return row[key] if key in row.keys() else default
 
 
-def centro_public(row, with_verif=True):
+def centro_public(row, with_verif=True, verif_count=None):
     d = {
         "id": row["id"], "nombre": row["nombre"], "tipo": row["tipo"],
         "zona": row["zona"] or "", "contacto": row["contacto"] or "",
@@ -344,8 +344,11 @@ def centro_public(row, with_verif=True):
     if row["lat"] is not None and row["lng"] is not None:
         d["lat"] = row["lat"]; d["lng"] = row["lng"]
     if with_verif:
-        c = get_db().execute("SELECT COUNT(*) n FROM verif WHERE centro_id=?", (row["id"],)).fetchone()
-        d["verif"] = c["n"]
+        if verif_count is not None:
+            d["verif"] = verif_count
+        else:
+            c = get_db().execute("SELECT COUNT(*) n FROM verif WHERE centro_id=?", (row["id"],)).fetchone()
+            d["verif"] = c["n"]
     return d
 
 
@@ -359,9 +362,14 @@ def rate_limit(bucket, limit, window):
     now = time.time()
     arr = [t for t in _hits.get(key, []) if now - t < window]
     if len(arr) >= limit:
+        _hits[key] = arr
         return False
     arr.append(now)
     _hits[key] = arr
+    # Poda ocasional: elimina cubetas ya vencidas para que el dict no crezca sin fin.
+    if len(_hits) > 512:
+        for k in [k for k, v in _hits.items() if not v or now - v[-1] > 3600]:
+            _hits.pop(k, None)
     return True
 
 
@@ -529,8 +537,12 @@ def api_banner():
 # --------------------------------------------------------------------------- #
 @app.get("/api/centros")
 def list_centros():
-    rows = get_db().execute("SELECT * FROM centros ORDER BY actualizado DESC").fetchall()
-    return jsonify(centros=[centro_public(r) for r in rows])
+    db = get_db()
+    rows = db.execute("SELECT * FROM centros ORDER BY actualizado DESC").fetchall()
+    # Conteo de verificaciones de todos los centros en una sola consulta (evita N+1)
+    counts = {r["centro_id"]: r["n"] for r in
+              db.execute("SELECT centro_id, COUNT(*) n FROM verif GROUP BY centro_id").fetchall()}
+    return jsonify(centros=[centro_public(r, verif_count=counts.get(r["id"], 0)) for r in rows])
 
 
 @app.post("/api/centros")

@@ -1,1 +1,11 @@
+# Secretos y configuración local
 .env
+
+# Datos en runtime (base de datos, fotos subidas) — NUNCA versionar
+data/*
+!data/.gitkeep
+
+# Artefactos
+static.zip
+__pycache__/
+*.pyc
