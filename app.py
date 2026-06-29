@@ -1028,7 +1028,9 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 @app.get("/")
 def index():
-    return send_from_directory(STATIC_DIR, "index.html")
+    resp = send_from_directory(STATIC_DIR, "index.html")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 @app.get("/<path:fname>")
@@ -1037,9 +1039,17 @@ def static_files(fname):
         return jsonify(error="no_existe"), 404
     full = os.path.join(STATIC_DIR, fname)
     if os.path.isfile(full):
-        return send_from_directory(STATIC_DIR, fname)
+        # Leaflet y sus imágenes son una librería fija: se cachean por mucho tiempo.
+        # El resto (incl. index.html) se revalida para que un despliegue se vea al instante.
+        if fname.startswith("leaflet/"):
+            return send_from_directory(STATIC_DIR, fname, max_age=2592000)  # 30 días
+        resp = send_from_directory(STATIC_DIR, fname)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
     # cualquier otra ruta vuelve al front (app de una sola página)
-    return send_from_directory(STATIC_DIR, "index.html")
+    resp = send_from_directory(STATIC_DIR, "index.html")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
 
 
 # Inicializa la BD al importar (también bajo gunicorn)
