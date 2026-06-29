@@ -355,9 +355,13 @@ def centro_public(row, with_verif=True, verif_count=None):
 # --------------------------------------------------------------------------- #
 # Límite de tasa muy simple (disuasivo) en memoria
 # --------------------------------------------------------------------------- #
+def client_ip():
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()
+
+
 _hits = {}
 def rate_limit(bucket, limit, window):
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0].strip()
+    ip = client_ip()
     key = (bucket, ip)
     now = time.time()
     arr = [t for t in _hits.get(key, []) if now - t < window]
@@ -371,6 +375,37 @@ def rate_limit(bucket, limit, window):
         for k in [k for k, v in _hits.items() if not v or now - v[-1] > 3600]:
             _hits.pop(k, None)
     return True
+
+
+# --------------------------------------------------------------------------- #
+# Bloqueo del login de administrador: tras varios fallos, la IP queda
+# bloqueada un rato aunque acierte. Es por IP (no global), así que una IP
+# atacante bloqueada nunca deja fuera al admin desde otra IP.
+# --------------------------------------------------------------------------- #
+ADMIN_FAIL_LIMIT = 5         # fallos permitidos...
+ADMIN_FAIL_WINDOW = 900      # ...dentro de esta ventana (segundos) = 15 min
+_admin_fails = {}
+
+def admin_lock_remaining(ip):
+    """Segundos que faltan para desbloquear esa IP, o 0 si no está bloqueada."""
+    now = time.time()
+    arr = [t for t in _admin_fails.get(ip, []) if now - t < ADMIN_FAIL_WINDOW]
+    _admin_fails[ip] = arr
+    if len(arr) >= ADMIN_FAIL_LIMIT:
+        return int(ADMIN_FAIL_WINDOW - (now - arr[0])) + 1
+    return 0
+
+def admin_fail_record(ip):
+    now = time.time()
+    arr = [t for t in _admin_fails.get(ip, []) if now - t < ADMIN_FAIL_WINDOW]
+    arr.append(now)
+    _admin_fails[ip] = arr
+    if len(_admin_fails) > 512:
+        for k in [k for k, v in _admin_fails.items() if not v or now - v[-1] > ADMIN_FAIL_WINDOW]:
+            _admin_fails.pop(k, None)
+
+def admin_fail_clear(ip):
+    _admin_fails.pop(ip, None)
 
 
 # --------------------------------------------------------------------------- #
@@ -891,13 +926,20 @@ def admin_setup():
 
 @app.post("/api/admin/login")
 def admin_login():
-    if not rate_limit("admin", 10, 600):
-        return jsonify(error="rate"), 429
+    ip = client_ip()
+    espera = admin_lock_remaining(ip)
+    if espera > 0:
+        app.logger.warning("admin login bloqueado: ip=%s faltan=%ss", ip, espera)
+        return jsonify(error="bloqueado", retryAfter=espera), 429
     if not admin_configured():
         return jsonify(error="setup_required"), 409
     data = request.get_json(silent=True) or {}
     if not check_admin_password(data.get("password") or ""):
-        return jsonify(error="password"), 401
+        admin_fail_record(ip)
+        restantes = max(0, ADMIN_FAIL_LIMIT - len(_admin_fails.get(ip, [])))
+        app.logger.warning("admin login fallido: ip=%s intentos_restantes=%s", ip, restantes)
+        return jsonify(error="password", intentosRestantes=restantes), 401
+    admin_fail_clear(ip)
     return jsonify(token=make_token("admin", {"admin": True}))
 
 

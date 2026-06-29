@@ -822,6 +822,19 @@ async function refresh(){
   try{ const b = await store.getBanner(); if(b){ state.banner = b; } }catch(_){}
   if(state.screen==="voluntario" || state.screen==="elegir") render();
 }
+// Ruta secreta para abrir el panel de administración (oculta del menú).
+// Solo disuade bots/curiosos: quien lea el código fuente la encontrará.
+// La protección real es el bloqueo por IP del backend en /api/admin/login.
+const ADMIN_HASH = "#gestion-k7v2x9";
+async function abrirAdmin(){
+  state.adminInput=""; state.adminError=""; state.adminCfg=null; state.screen="admin"; render();
+  try{ state.adminCfg = await store.adminState(); }catch(_){ state.adminCfg={configured:false}; }
+  if(state.screen==="admin") render();
+}
+function checkAdminHash(){
+  if(location.hash === ADMIN_HASH) abrirAdmin();
+}
+
 async function boot(){
   state.uid = store.getUid();
   state.myId = store.getMyId();
@@ -829,6 +842,8 @@ async function boot(){
   try{ state.banner = await store.getBanner(); }catch(_){}
   await refresh();
   render();
+  checkAdminHash();
+  window.addEventListener("hashchange", checkAdminHash);
   setInterval(()=>{ if(document.visibilityState==="visible" && state.screen==="voluntario" && !state.reportFor && !state.coordFor && !state.searchText) refresh(); }, 8000);
   // Latido del contador de visitas (no redibuja toda la pantalla: actualiza solo el indicador)
   latir();
@@ -890,12 +905,7 @@ function landing(){
           el("div",{class:"chev", html:"&#8250;"})
         )
       ),
-      footnote(),
-      el("button",{class:"adminlink", onclick:async()=>{
-        state.adminInput=""; state.adminError=""; state.adminCfg=null; state.screen="admin"; render();
-        try{ state.adminCfg = await store.adminState(); }catch(_){ state.adminCfg={configured:false}; }
-        if(state.screen==="admin") render();
-      }}, "Administración")
+      footnote()
     )
   );
 }
@@ -1906,7 +1916,15 @@ function adminScreen(){
         try{ state.adminList = await store.adminList(token); }catch(_){ state.adminList=[]; }
         render(); toast(first?"Administrador creado":"Sesión iniciada");
       }catch(err){
-        if(err.status===401){ state.adminError="Contraseña incorrecta."; }
+        if(err.status===429){
+          const segs = (err.data && err.data.retryAfter) || 900;
+          const min = Math.ceil(segs/60);
+          state.adminError = "Demasiados intentos fallidos. Espera unos "+min+" min e inténtalo de nuevo.";
+        }
+        else if(err.status===401){
+          const r = err.data && typeof err.data.intentosRestantes==="number" ? err.data.intentosRestantes : null;
+          state.adminError = "Contraseña incorrecta." + (r!==null && r>0 ? (" Te quedan "+r+" intento"+(r===1?"":"s")+".") : "");
+        }
         else if(err.status===409){ state.adminError="Ya estaba configurado; entra con la contraseña."; state.adminCfg={configured:true}; }
         else if(err.offline){ state.adminError="Sin conexión con el servidor."; }
         else { state.adminError="No se pudo continuar."; }
