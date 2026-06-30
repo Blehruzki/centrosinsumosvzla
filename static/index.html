@@ -300,6 +300,38 @@
     background:var(--surface); color:var(--ink); border:1px solid var(--line);}
   .coordbtn.cn{border-color:#e2867d; color:#931810;}
   .coordbtn.cg{border-color:#7aa7b3; color:#0a5566;}
+  /* estadísticas */
+  .statlbl{font-size:11px; color:var(--muted); margin:14px 2px 8px; text-transform:uppercase; letter-spacing:.05em;}
+  .statgrid3{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:8px;}
+  .statgrid2{display:grid; grid-template-columns:repeat(2,1fr); gap:8px;}
+  .statcard{border-radius:10px; padding:10px;}
+  .statcard.urg{background:var(--urgente-bg);} .statcard.urg .statnum,.statcard.urg .statcap{color:var(--urgente);}
+  .statcard.baj{background:var(--bajo-bg);} .statcard.baj .statnum,.statcard.baj .statcap{color:var(--bajo);}
+  .statcard.abast{background:var(--suf-bg);} .statcard.abast .statnum,.statcard.abast .statcap{color:var(--suf);}
+  .statcard.plain{background:var(--surface); border:1px solid var(--line);}
+  .statnum{font-size:22px; font-weight:800; line-height:1.1;}
+  .statnum.sm{font-size:18px;}
+  .statcap{font-size:11px; margin-top:1px;}
+  .atn-wrap{margin-bottom:6px;}
+  .atn{width:100%; display:flex; align-items:center; gap:9px; padding:9px 11px; text-align:left; appearance:none; cursor:pointer;
+    background:var(--surface); border:1px solid var(--line); border-radius:9px; font:inherit;}
+  .atn.urg{border-color:#e2867d;} .atn.urg .atn-n{color:var(--urgente);}
+  .atn-ico{flex:0 0 auto; font-size:15px;}
+  .atn-txt{flex:1; min-width:0; font-size:13px;}
+  .atn-n{flex:0 0 auto; font-size:15px; font-weight:800;}
+  .atn-chev{flex:0 0 auto; font-size:10px; color:var(--muted);}
+  .atn-body{border:1px solid var(--line); border-top:0; border-radius:0 0 9px 9px; padding:4px 0;}
+  .atn-item{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 11px; border-top:1px solid var(--subtle);}
+  .atn-item:first-child{border-top:0;}
+  .atn-nombre{font-size:13.5px; font-weight:700;}
+  .desbox{display:flex; flex-direction:column; gap:8px; margin-bottom:6px;}
+  .deshead{display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:3px;}
+  .desbar{height:6px; background:var(--urgente-bg); border-radius:3px; overflow:hidden;}
+  .desfill{height:100%; background:var(--suf); border-radius:3px;}
+  .spark{display:flex; align-items:flex-end; gap:3px; height:48px; margin-bottom:6px;}
+  .sparkbar{flex:1; background:var(--azul,#0c6e84); border-radius:2px 2px 0 0; min-height:3px;}
+  .stkcol{flex:1; display:flex; flex-direction:column; justify-content:flex-end;}
+  .stkseg.urg{background:var(--urgente);} .stkseg.baj{background:var(--bajo);} .stkseg.abast{background:var(--suf);}
   .row2{display:flex; gap:10px; margin-top:10px;}
   .row2 .btn{flex:1}
   /* toast */
@@ -497,6 +529,7 @@ const store = {
   async adminSetup(password){ return (await api("/admin/setup",{method:"POST", body:JSON.stringify({password})})).token; },
   async adminLogin(password){ return (await api("/admin/login",{method:"POST", body:JSON.stringify({password})})).token; },
   async adminList(token){ return (await api("/admin/centros",{headers:{Authorization:"Bearer "+token}})).centros||[]; },
+  async adminStats(token){ return await api("/admin/stats",{headers:{Authorization:"Bearer "+token}}); },
   async adminDelete(token, id){ return await api("/admin/centros/"+id,{method:"DELETE", headers:{Authorization:"Bearer "+token}}); },
   async adminClearReports(token, id){ return await api("/admin/centros/"+id+"/reportes",{method:"DELETE", headers:{Authorization:"Bearer "+token}}); },
   async adminGetCode(token, id){ return (await api("/admin/centros/"+id+"/codigo",{headers:{Authorization:"Bearer "+token}})).codigo; },
@@ -544,6 +577,9 @@ let state = {
   adminToken: null,      // token de administrador (en memoria)
   adminCfg: null,        // {configured, envManaged}
   adminList: [],         // centros vistos en el panel
+  stats: null,           // datos de la pantalla de estadísticas
+  statsError: false,
+  statsExp: null,        // qué lista de "necesita atención" está desplegada
   adminInput: "",
   adminError: "",
   adminDelId: null,      // centro pendiente de confirmar borrado
@@ -1944,6 +1980,11 @@ function adminScreen(){
   ));
   main.appendChild(el("div",{style:"display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px"},
     el("button",{class:"smallbtn", onclick:async()=>{
+      state.screen="adminStats"; state.stats=null; render();
+      try{ state.stats = await store.adminStats(state.adminToken); }catch(_){ state.statsError=true; }
+      if(state.screen==="adminStats") render();
+    }}, "Estadísticas"),
+    el("button",{class:"smallbtn", onclick:async()=>{
       try{ state.adminList=await store.adminList(state.adminToken); render(); toast("Lista actualizada"); }
       catch(_){ toast("No se pudo actualizar"); }
     }}, "Actualizar lista"),
@@ -2289,6 +2330,114 @@ function adminBannerScreen(){
   return el("div",{class:"wrap"}, topbar("Banner informativo", "Aviso superior para todos", volver), main);
 }
 
+function statsScreen(){
+  const main = el("div",{class:"main"});
+  const back = ()=>{ state.screen="admin"; render(); };
+  if(state.statsError){
+    main.appendChild(el("div",{class:"empty"}, el("p",{}, "No se pudieron cargar las estadísticas.")));
+    return el("div",{class:"wrap"}, topbar("Estadísticas", null, back), main);
+  }
+  if(!state.stats){
+    main.appendChild(el("div",{class:"empty"}, el("p",{}, "Cargando…")));
+    return el("div",{class:"wrap"}, topbar("Estadísticas", null, back), main);
+  }
+  const s = state.stats;
+  const rotulo = (t)=> el("p",{class:"statlbl"}, t);
+
+  // --- Estado ahora ---
+  main.appendChild(rotulo("Estado ahora"));
+  const g3 = el("div",{class:"statgrid3"});
+  const tarjeta3 = (n,l,cls)=> el("div",{class:"statcard "+cls}, el("div",{class:"statnum"}, String(n)), el("div",{class:"statcap"}, l));
+  g3.appendChild(tarjeta3(s.ahora.urgente,"Urgentes","urg"));
+  g3.appendChild(tarjeta3(s.ahora.bajo,"Bajos","baj"));
+  g3.appendChild(tarjeta3(s.ahora.abastecido,"Abastecidos","abast"));
+  main.appendChild(g3);
+  const g2 = el("div",{class:"statgrid2"});
+  g2.appendChild(el("div",{class:"statcard plain"}, el("div",{class:"statnum sm"}, String(s.ahora.total)), el("div",{class:"statcap"}, "Centros totales")));
+  g2.appendChild(el("div",{class:"statcard plain"}, el("div",{class:"statnum sm"}, String(s.ahora.viendo)), el("div",{class:"statcap"}, "Viendo ahora")));
+  main.appendChild(g2);
+
+  // --- Necesita atención (clicable) ---
+  main.appendChild(rotulo("Necesita atención"));
+  const filaAtencion = (key, icono, texto, arr, cls)=>{
+    const wrap = el("div",{class:"atn-wrap"});
+    const abierto = state.statsExp===key;
+    wrap.appendChild(el("button",{class:"atn"+(cls?" "+cls:""), onclick:()=>{ state.statsExp = abierto?null:key; render(); }},
+      el("span",{class:"atn-ico", html:icono}),
+      el("span",{class:"atn-txt"}, texto),
+      el("span",{class:"atn-n"}, String(arr.length)),
+      el("span",{class:"atn-chev", html: abierto?"&#9652;":"&#9662;"})
+    ));
+    if(abierto){
+      const body = el("div",{class:"atn-body"});
+      if(!arr.length) body.appendChild(el("div",{class:"meta", style:"padding:8px 11px"}, "Ninguno. 👍"));
+      arr.forEach(c=>{
+        body.appendChild(el("div",{class:"atn-item"},
+          el("div",{style:"min-width:0"},
+            el("div",{class:"atn-nombre"}, c.nombre),
+            el("div",{class:"meta"}, [tipoLabelOf(c.tipo), c.zona].filter(Boolean).join(" · ")+" · "+hace(c.actualizado))
+          ),
+          c.contacto
+            ? el("a",{class:"cardlink", href:"tel:"+String(c.contacto).replace(/[^\d+]/g,"")}, "Llamar")
+            : el("span",{class:"meta", style:"color:var(--urgente)"}, "sin contacto")
+        ));
+      });
+      wrap.appendChild(body);
+    }
+    return wrap;
+  };
+  main.appendChild(filaAtencion("sincontacto","&#128222;","Urgentes sin contacto", s.atencion.urgentesSinContacto, "urg"));
+  main.appendChild(filaAtencion("sinactualizar","&#9203;","Sin actualizar +24 h", s.atencion.sinActualizar, ""));
+  main.appendChild(filaAtencion("reportados","&#9873;","Reportes pendientes", s.atencion.reportados, ""));
+
+  // --- Desajuste de insumos ---
+  main.appendChild(rotulo("Desajuste de insumos (necesitan vs ofrecen)"));
+  if(!s.desajuste.length){
+    main.appendChild(el("div",{class:"meta", style:"margin-bottom:14px"}, "Aún no hay insumos registrados."));
+  } else {
+    const box = el("div",{class:"desbox"});
+    s.desajuste.forEach(d=>{
+      const cobertura = d.necesitan>0 ? Math.min(100, Math.round(100*d.ofrecen/d.necesitan)) : 100;
+      box.appendChild(el("div",{class:"desrow"},
+        el("div",{class:"deshead"},
+          el("span",{}, SUPPLY_LABEL[d.insumo]||d.insumo),
+          el("span",{class:"meta"}, d.necesitan+" nec · "+d.ofrecen+" ofr")
+        ),
+        el("div",{class:"desbar"}, el("div",{class:"desfill", style:"width:"+cobertura+"%"}))
+      ));
+    });
+    main.appendChild(box);
+  }
+
+  // --- Altas por día (14 días) ---
+  main.appendChild(rotulo("Altas por día (14 días)"));
+  const maxAlta = Math.max(1, ...s.altasPorDia.map(a=>a.n));
+  const barras = el("div",{class:"spark"});
+  s.altasPorDia.forEach(a=>{
+    const h = Math.round(100*a.n/maxAlta);
+    barras.appendChild(el("div",{class:"sparkbar", style:"height:"+Math.max(3,h)+"%", title:a.dia+": "+a.n}));
+  });
+  main.appendChild(barras);
+
+  // --- Evolución de urgencia ---
+  main.appendChild(rotulo("Evolución de urgencia"));
+  if(s.historico.length < 2){
+    main.appendChild(el("div",{class:"meta"}, "La tendencia aparecerá a medida que pasen los días (se guarda una foto diaria)."));
+  } else {
+    const maxTot = Math.max(1, ...s.historico.map(h=>h.urgente+h.bajo+h.abastecido));
+    const stk = el("div",{class:"spark"});
+    s.historico.forEach(h=>{
+      const col = el("div",{class:"stkcol", title:h.dia});
+      const seg = (n,cls)=>{ if(n>0) col.appendChild(el("div",{class:"stkseg "+cls, style:"height:"+(100*n/maxTot)+"%"})); };
+      seg(h.urgente,"urg"); seg(h.bajo,"baj"); seg(h.abastecido,"abast");
+      stk.appendChild(col);
+    });
+    main.appendChild(stk);
+  }
+
+  return el("div",{class:"wrap"}, topbar("Estadísticas", null, back), main);
+}
+
 function render(){
   const root = document.getElementById("app");
   const y = window.scrollY;                 // recordar posición actual
@@ -2304,6 +2453,7 @@ function render(){
   else if(state.screen==="ayuda") node=ayudaScreen();
   else if(state.screen==="adminAyuda") node=adminAyudaScreen();
   else if(state.screen==="adminBanner") node=adminBannerScreen();
+  else if(state.screen==="adminStats") node=statsScreen();
   else node=landing();
   // Banner informativo (excepto en su propia pantalla de edición):
   // desplegado arriba (fijo), o replegado como ícono flotante.

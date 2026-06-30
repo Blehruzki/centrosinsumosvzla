@@ -26,6 +26,7 @@ import time
 import base64
 import sqlite3
 import secrets
+import threading
 from functools import wraps
 
 from flask import Flask, request, jsonify, g, send_from_directory, Response
@@ -101,14 +102,19 @@ app = Flask(__name__, static_folder=None)
 # --------------------------------------------------------------------------- #
 # Base de datos
 # --------------------------------------------------------------------------- #
+def db_connect():
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=5000;")
+    conn.execute("PRAGMA foreign_keys=ON;")
+    return conn
+
+
 def get_db():
     if "db" not in g:
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA journal_mode=WAL;")
-        g.db.execute("PRAGMA busy_timeout=5000;")
-        g.db.execute("PRAGMA foreign_keys=ON;")
+        g.db = db_connect()
     return g.db
 
 
@@ -173,6 +179,15 @@ def init_db():
         ts INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_admin_fails_ip ON admin_fails(ip);
+    CREATE TABLE IF NOT EXISTS stats_diarias (
+        dia TEXT PRIMARY KEY,          -- AAAA-MM-DD en hora de Venezuela
+        urgente INTEGER NOT NULL DEFAULT 0,
+        bajo INTEGER NOT NULL DEFAULT 0,
+        abastecido INTEGER NOT NULL DEFAULT 0,
+        ofrecen INTEGER NOT NULL DEFAULT 0,
+        total INTEGER NOT NULL DEFAULT 0,
+        creado INTEGER NOT NULL
+    );
     """)
     # Migración: añadir columnas nuevas si la base es de una versión anterior
     cols = [r[1] for r in db.execute("PRAGMA table_info(centros)").fetchall()]
@@ -1006,6 +1021,90 @@ def admin_list():
     return jsonify(centros=out)
 
 
+@app.get("/api/admin/stats")
+@require_admin
+def admin_stats():
+    db = get_db()
+    tomar_foto_diaria(db)  # respaldo: asegura la foto de hoy al consultar
+    now = int(time.time() * 1000)
+    rows = db.execute("SELECT * FROM centros").fetchall()
+
+    def mini(r):  # versión ligera de un centro para las listas clicables
+        return {"id": r["id"], "nombre": r["nombre"], "tipo": r["tipo"],
+                "zona": r["zona"] or "", "contacto": r["contacto"] or "",
+                "estado": r["estado"], "actualizado": r["actualizado"]}
+
+    estado = {"urgente": 0, "bajo": 0, "abastecido": 0}
+    ofrecen = 0
+    urgentes_sin_contacto, sin_actualizar = [], []
+    nec_cnt, ofr_cnt = {}, {}
+    corte_24h = now - 24 * 3600 * 1000
+
+    for r in rows:
+        necesita = bool(r["necesita"]) if "necesita" in r.keys() else False
+        ofrece = bool(r["ofrece"]) if "ofrece" in r.keys() else False
+        if ofrece:
+            ofrecen += 1
+        if necesita:
+            if r["estado"] == "urgente":
+                estado["urgente"] += 1
+                if not (r["contacto"] or "").strip():
+                    urgentes_sin_contacto.append(mini(r))
+            elif r["estado"] == "bajo":
+                estado["bajo"] += 1
+            elif r["estado"] == "suficiente":
+                estado["abastecido"] += 1
+            if r["estado"] != "suficiente":
+                for k in json.loads(r["necesidades"] or "[]"):
+                    nec_cnt[k] = nec_cnt.get(k, 0) + 1
+        if ofrece:
+            disp = json.loads((r["disponibilidad"] if "disponibilidad" in r.keys() else "{}") or "{}")
+            for k, lvl in disp.items():
+                if lvl != "agotado":
+                    ofr_cnt[k] = ofr_cnt.get(k, 0) + 1
+        if r["actualizado"] < corte_24h:
+            sin_actualizar.append(mini(r))
+
+    # Desajuste de insumos, ordenado por mayor déficit (necesitan - ofrecen)
+    claves = set(nec_cnt) | set(ofr_cnt)
+    desajuste = [{"insumo": k, "necesitan": nec_cnt.get(k, 0), "ofrecen": ofr_cnt.get(k, 0),
+                  "deficit": nec_cnt.get(k, 0) - ofr_cnt.get(k, 0)} for k in claves]
+    desajuste.sort(key=lambda d: -d["deficit"])
+
+    # Centros con reportes pendientes
+    rep_ids = [x["centro_id"] for x in
+               db.execute("SELECT DISTINCT centro_id FROM reportes").fetchall()]
+    by_id = {r["id"]: r for r in rows}
+    reportados = [mini(by_id[i]) for i in rep_ids if i in by_id]
+
+    # Altas por día (últimos 14 días, hora de Venezuela)
+    dias = [dia_ve(time.time() - i * 86400) for i in range(13, -1, -1)]
+    altas = {d: 0 for d in dias}
+    for r in rows:
+        d = dia_ve(r["creado"] / 1000)
+        if d in altas:
+            altas[d] += 1
+    altas_por_dia = [{"dia": d, "n": altas[d]} for d in dias]
+
+    # Histórico de fotos diarias (para la evolución de urgencia)
+    hist = [dict(x) for x in db.execute(
+        "SELECT dia,urgente,bajo,abastecido,ofrecen,total FROM stats_diarias "
+        "ORDER BY dia DESC LIMIT 30").fetchall()]
+    hist.reverse()
+
+    return jsonify(
+        ahora={"urgente": estado["urgente"], "bajo": estado["bajo"],
+               "abastecido": estado["abastecido"], "ofrecen": ofrecen,
+               "total": len(rows), "viendo": contar_activos(db)},
+        atencion={"urgentesSinContacto": urgentes_sin_contacto,
+                  "sinActualizar": sin_actualizar,
+                  "reportados": reportados},
+        desajuste=desajuste,
+        altasPorDia=altas_por_dia,
+        historico=hist,
+    )
+
+
 @app.delete("/api/admin/centros/<cid>/reportes")
 @require_admin
 def admin_clear_reports(cid):
@@ -1109,8 +1208,63 @@ def static_files(fname):
     return resp
 
 
+# --------------------------------------------------------------------------- #
+# Foto diaria de estadísticas (para la tendencia). Un hilo de fondo garantiza
+# una foto por día aunque nadie entre al panel. Venezuela es UTC-4 fijo.
+# --------------------------------------------------------------------------- #
+VE_OFFSET_S = 4 * 3600  # UTC-4
+
+def dia_ve(ts=None):
+    """Fecha AAAA-MM-DD en hora de Venezuela para un timestamp (segundos)."""
+    t = (ts if ts is not None else time.time()) - VE_OFFSET_S
+    return time.strftime("%Y-%m-%d", time.gmtime(t))
+
+def tomar_foto_diaria(db):
+    """Guarda/actualiza la foto de HOY con los totales actuales. Los días
+    anteriores quedan congelados en su última lectura (≈ cierre del día)."""
+    hoy = dia_ve()
+    r = db.execute("""
+        SELECT
+          SUM(CASE WHEN necesita=1 AND estado='urgente'    THEN 1 ELSE 0 END) urgente,
+          SUM(CASE WHEN necesita=1 AND estado='bajo'       THEN 1 ELSE 0 END) bajo,
+          SUM(CASE WHEN necesita=1 AND estado='suficiente' THEN 1 ELSE 0 END) abastecido,
+          SUM(CASE WHEN ofrece=1 THEN 1 ELSE 0 END) ofrecen,
+          COUNT(*) total
+        FROM centros
+    """).fetchone()
+    db.execute("""
+        INSERT INTO stats_diarias(dia,urgente,bajo,abastecido,ofrecen,total,creado)
+        VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(dia) DO UPDATE SET
+          urgente=excluded.urgente, bajo=excluded.bajo, abastecido=excluded.abastecido,
+          ofrecen=excluded.ofrecen, total=excluded.total
+    """, (hoy, r["urgente"] or 0, r["bajo"] or 0, r["abastecido"] or 0,
+          r["ofrecen"] or 0, r["total"] or 0, int(time.time() * 1000)))
+    db.commit()
+    return True
+
+def _hilo_foto_diaria():
+    # Se despierta cada hora: si falta la foto del día (p. ej. tras un reinicio), la toma.
+    while True:
+        try:
+            conn = db_connect()
+            try:
+                tomar_foto_diaria(conn)
+            finally:
+                conn.close()
+        except Exception as e:
+            try: app.logger.warning("foto diaria falló: %s", e)
+            except Exception: pass
+        time.sleep(3600)
+
+def iniciar_hilo_foto():
+    t = threading.Thread(target=_hilo_foto_diaria, name="foto-diaria", daemon=True)
+    t.start()
+
+
 # Inicializa la BD al importar (también bajo gunicorn)
 init_db()
+iniciar_hilo_foto()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
